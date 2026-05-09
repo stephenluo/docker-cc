@@ -1,0 +1,4 @@
+{
+  "_mode": "oauth",
+  "_comment": "OAuth 模式：使用 Anthropic 账号订阅（Claude Pro/Max）。切到此供应商后运行 cc login"
+}

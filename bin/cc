@@ -1,0 +1,125 @@
+#!/usr/bin/env bash
+# cc：宿主端 wrapper，docker compose 的薄封装。
+# 详见 docs/implementation-plan.md §7.1
+
+set -e
+
+# 关键：先保存用户调用 cc 时的工作目录，再 cd 到 compose 目录
+# 否则 docker-compose.yml 里的 ${PWD} 会被解析成 compose 目录，工作目录就挂错了
+export HOST_PWD="$PWD"
+COMPOSE_DIR="${DOCKER_CC_HOME:-$HOME/.docker-cc/repo}"
+
+[ -d "$COMPOSE_DIR" ] || {
+  echo "未找到 $COMPOSE_DIR。请先运行 install.sh，或设置 DOCKER_CC_HOME。"
+  exit 1
+}
+cd "$COMPOSE_DIR"
+
+# 仅提取 cc 脚本需要的变量（不能 source 整个 .env：CLASH_SUB_URL 含 & ? 等
+# shell 元字符时 source 会语法错；docker compose 读 .env 不走 shell 语法所以无碍）
+if [ -f .env ]; then
+  while IFS='=' read -r k v; do
+    case "$k" in
+      UI_PORT) v="${v%\"}"; UI_PORT="${v#\"}" ;;
+    esac
+  done < .env
+fi
+
+# 读版本号（VERSION 文件由 install.sh 复制到 COMPOSE_DIR）
+CC_VERSION="$(cat VERSION 2>/dev/null || echo dev)"
+
+# --version / -v：单独显示版本，不透传给 claude，不打 banner
+if [ "${1:-}" = "--version" ] || [ "${1:-}" = "-v" ]; then
+  echo "cc v${CC_VERSION}"
+  exit 0
+fi
+
+# 其他所有调用：开始时打一行 banner（输出到 stderr 不污染 stdout）
+echo "cc v${CC_VERSION}" >&2
+
+case "${1:-}" in
+  up)
+    shift
+    if [ -n "${1:-}" ]; then
+      # 首次或想换订阅时：cc up <url> 直接传订阅链接，自动写入 .env 并强制重拉
+      # 用 grep -v + 追加替代 sed，避免 URL 含 | / & / \ 等特殊字符破坏 sed 模式
+      # URL 加双引号写入：docker compose 解析 .env 时会去引号；防御 URL 含 & 等元字符
+      url="$1"
+      { grep -v '^CLASH_SUB_URL=' .env 2>/dev/null || true; echo "CLASH_SUB_URL=\"${url}\""; } > .env.tmp
+      mv .env.tmp .env
+      REFRESH_SUB=1 exec docker compose up -d mihomo
+    else
+      # 之后：cc up 直接复用 .env 里的 URL
+      [ -f .env ] && grep -q '^CLASH_SUB_URL=.' .env \
+        || { echo "首次使用请指定订阅: cc up <subscription-url>"; exit 1; }
+      exec docker compose up -d mihomo
+    fi
+    ;;
+  down)   exec docker compose down ;;
+  logs)   shift; exec docker compose logs "$@" mihomo ;;
+  panel)
+    url="http://127.0.0.1:${UI_PORT:-19090}/ui"
+    if   command -v open      >/dev/null 2>&1; then exec open      "$url"
+    elif command -v xdg-open  >/dev/null 2>&1; then exec xdg-open  "$url"
+    else echo "请在浏览器打开：$url"; fi ;;
+  shell)  exec docker compose run --rm cc bash ;;
+  login)
+          # 切到 OAuth 模式（清空 settings.json 的 env，避免 API key 抢占）
+          cc-use claude-account
+          echo "进入 claude 交互界面后，输入 /login 完成 OAuth 流程（终端会显示 URL，"
+          echo "用宿主浏览器打开授权，再把 token 复制粘贴回容器终端）。完成后 Ctrl+D 退出。"
+          exec docker compose run --rm cc claude ;;
+  logout)
+          echo "进入 claude 交互界面后，输入 /logout 退出账号。"
+          exec docker compose run --rm cc claude ;;
+  refresh)
+          REFRESH_SUB=1 exec docker compose up -d --force-recreate mihomo ;;
+  probe)
+          # 重新探测 GH_PROXY 备用源，写入 .env（cc upgrade 失败时手动救援）
+          target="github.com/mikefarah/yq/releases/download/v4.45.1/yq_linux_amd64"
+          for p in "https://mirror.ghproxy.com/" "https://ghfast.top/" "https://gh-proxy.com/" "https://ghps.cc/" ""; do
+            if [ -n "$p" ]; then printf "  探测 %-32s ... " "$p"
+            else                  printf "  %-39s ... " "探测 直连 GitHub（无加速）"; fi
+            if curl -sfL --max-time 5 -r 0-1024 -o /dev/null "${p}https://${target}" 2>/dev/null; then
+              echo "✓"
+              { grep -v '^GH_PROXY=' .env 2>/dev/null || true; echo "GH_PROXY=${p}"; } > .env.tmp
+              mv .env.tmp .env
+              echo "已写入 .env：GH_PROXY=${p:-（直连）}"
+              exit 0
+            fi
+            echo "✗"
+          done
+          echo "所有 GH_PROXY 源都不可达"
+          exit 1 ;;
+  upgrade)
+          # ⚠ 不要用 cc update —— claude code 装在镜像层，--rm 容器内 npm 更新会被丢弃。
+          # 升级正确做法是 rebuild 镜像。
+          shift
+          case "${1:-claude}" in
+            claude|all)
+              if ! docker compose build --no-cache --pull; then
+                echo ""
+                echo "build 失败。常见原因：GH_PROXY 镜像源临时挂掉。"
+                echo "请运行: cc probe   # 重新探测可用源"
+                echo "然后再 cc upgrade。"
+                exit 1
+              fi
+              docker compose up -d --force-recreate mihomo
+              docker compose run --rm cc claude --version
+              echo "升级完成。配置和凭据未受影响（都在卷挂载目录）。" ;;
+            mihomo)
+              echo "升级 mihomo 内核：修改 Dockerfile 的 ARG MIHOMO_VERSION，然后 cc upgrade claude" ;;
+            *)
+              echo "用法: cc upgrade [claude|mihomo|all]"; exit 1 ;;
+          esac ;;
+  update)
+          echo "提示：cc update 不会持久化（容器层 npm 更新会被丢弃）。"
+          echo "请使用 cc upgrade（rebuild 镜像）。"
+          exit 1 ;;
+  *)
+    # 默认：透传给 claude
+    # docker compose up -d 是幂等操作：已运行则 no-op，未运行则启动
+    docker compose up -d mihomo >/dev/null
+    exec docker compose run --rm cc claude "$@"
+    ;;
+esac

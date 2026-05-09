@@ -1,0 +1,10 @@
+# 测试用最小 Mihomo 配置，含一个 DIRECT 节点（不实际走代理）
+mixed-port: 7890
+mode: rule
+log-level: info
+proxies:
+  - { name: direct, type: direct }
+proxy-groups:
+  - { name: PROXY, type: select, proxies: [direct] }
+rules:
+  - MATCH,PROXY

@@ -1,0 +1,6 @@
+# 集成测试 override：让 mihomo 容器能访问宿主上跑的 mock subscription server
+# 用法：docker compose -f docker-compose.yml -f tests/fixtures/docker-compose.test.yml ...
+services:
+  mihomo:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # docker 20.10+ 内置，跨平台兼容 Linux

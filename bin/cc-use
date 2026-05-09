@@ -1,0 +1,237 @@
+#!/usr/bin/env bash
+# cc-use：LLM 供应商管理 + 切换。同一份脚本同时部署在宿主和容器内。
+# 详见 docs/implementation-plan.md §7.2
+
+set -e
+
+# 容器/宿主自动适配路径
+if [ -f /.dockerenv ]; then
+  PROVIDERS_DIR="${PROVIDERS_DIR:-/root/.cc-providers}"
+  SETTINGS="${CLAUDE_SETTINGS:-/root/.claude/settings.json}"
+else
+  PROVIDERS_DIR="${PROVIDERS_DIR:-$HOME/.docker-cc/providers}"
+  SETTINGS="${CLAUDE_SETTINGS:-$HOME/.docker-cc/claude/settings.json}"
+fi
+mkdir -p "$PROVIDERS_DIR" "$(dirname "$SETTINGS")" 2>/dev/null || true
+[ -f "$SETTINGS" ] || echo '{}' > "$SETTINGS"
+
+# —— 工具函数 ——
+
+# 脱敏 API Key：sk-ant-xxxxxxxx → sk-ant-***xxxx
+mask_key() {
+  local v="$1"
+  [ -z "$v" ] && return
+  if [ ${#v} -le 8 ]; then echo "***"; else
+    echo "${v:0:7}***${v: -4}"
+  fi
+}
+
+# 当前激活的供应商：用 settings.json 的 env.ANTHROPIC_BASE_URL 反查 providers/*.json
+current_provider() {
+  local cur_url cur_token
+  cur_url=$(jq -r '.env.ANTHROPIC_BASE_URL // empty' "$SETTINGS" 2>/dev/null)
+  cur_token=$(jq -r '.env.ANTHROPIC_AUTH_TOKEN // .env.ANTHROPIC_API_KEY // empty' "$SETTINGS" 2>/dev/null)
+
+  if [ -z "$cur_token" ] && [ -z "$cur_url" ]; then
+    # env 空 → OAuth 模式，找 _mode=oauth 的供应商
+    for f in "$PROVIDERS_DIR"/*.json; do
+      [ -f "$f" ] || continue
+      if [ "$(jq -r '._mode // empty' "$f" 2>/dev/null)" = "oauth" ]; then
+        basename "$f" .json
+        return
+      fi
+    done
+    return
+  fi
+
+  for f in "$PROVIDERS_DIR"/*.json; do
+    [ -f "$f" ] || continue
+    if [ "$(jq -r '.ANTHROPIC_BASE_URL // empty' "$f" 2>/dev/null)" = "$cur_url" ]; then
+      basename "$f" .json
+      return
+    fi
+  done
+}
+
+# —— 子命令实现 ——
+
+cmd_list() {
+  local active
+  active=$(current_provider)
+  printf "%-2s %-18s %-45s %s\n" "" "NAME" "BASE_URL" "TYPE"
+  for f in "$PROVIDERS_DIR"/*.json; do
+    [ -f "$f" ] || continue
+    local name url mode marker
+    name=$(basename "$f" .json)
+    url=$(jq -r '.ANTHROPIC_BASE_URL // "-"' "$f" 2>/dev/null)
+    mode=$(jq -r '._mode // "api-key"' "$f" 2>/dev/null)
+    [ "$name" = "$active" ] && marker="★" || marker=" "
+    printf "%-2s %-18s %-45s %s\n" "$marker" "$name" "$url" "$mode"
+  done
+}
+
+cmd_current() {
+  local n
+  n=$(current_provider)
+  [ -n "$n" ] && echo "$n" || echo "(none)"
+}
+
+cmd_show() {
+  local name="$1" file
+  [ -z "$name" ] && { echo "用法: cc-use show <name>"; exit 1; }
+  file="$PROVIDERS_DIR/${name}.json"
+  [ -f "$file" ] || { echo "找不到供应商: $name"; exit 1; }
+  # token 字段脱敏
+  jq 'with_entries(
+        if (.key | endswith("TOKEN")) or (.key | endswith("API_KEY"))
+        then .value = (if .value | length > 8
+                       then (.value[0:7] + "***" + .value[-4:])
+                       else "***" end)
+        else . end
+      )' "$file"
+}
+
+cmd_add() {
+  local name="$1"; shift || true
+  [ -z "$name" ] && { echo "用法: cc-use add <name> [--mode=oauth | --api-key=K --base-url=U ...]"; exit 1; }
+
+  local mode="api-key" api_key="" base_url="" model="" small_model="" key_name="ANTHROPIC_AUTH_TOKEN"
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --mode=*)        mode="${1#--mode=}" ;;
+      --api-key=*)     api_key="${1#--api-key=}" ;;
+      --base-url=*)    base_url="${1#--base-url=}" ;;
+      --model=*)       model="${1#--model=}" ;;
+      --small-model=*) small_model="${1#--small-model=}" ;;
+      --key-name=*)    key_name="${1#--key-name=}" ;;
+      *) echo "未知参数: $1"; exit 1 ;;
+    esac
+    shift
+  done
+
+  local file="$PROVIDERS_DIR/${name}.json"
+  [ -f "$file" ] && { echo "供应商已存在: ${name}（用 cc-use edit ${name} 修改，或先 cc-use remove ${name}）"; exit 1; }
+
+  if [ "$mode" = "oauth" ]; then
+    jq -n '{ _mode: "oauth", _comment: "OAuth 模式：切到此供应商后运行 cc login" }' \
+      > "$file"
+    echo "已创建 OAuth 供应商: ${name}（运行 cc-use ${name} && cc login 完成登录）"
+    return
+  fi
+
+  # 缺参数交互式补齐
+  [ -z "$api_key" ]     && { read -rsp "API Key: " api_key; echo; }
+  [ -z "$base_url" ]    && read -rp  "Base URL: " base_url
+  [ -z "$model" ]       && read -rp  "Model (可选，主对话): " model
+  [ -z "$small_model" ] && read -rp  "Small/Fast Model (可选，后台小任务): " small_model
+
+  jq -n --arg k "$key_name" --arg t "$api_key" --arg u "$base_url" \
+        --arg m "$model"   --arg sm "$small_model" \
+    '{ ($k): $t, ANTHROPIC_BASE_URL: $u } +
+     (if $m  == "" then {} else {ANTHROPIC_MODEL: $m} end) +
+     (if $sm == "" then {} else {ANTHROPIC_SMALL_FAST_MODEL: $sm} end)' \
+    > "$file"
+  echo "已添加供应商: $name → $file"
+}
+
+cmd_edit() {
+  local name="$1" file
+  [ -z "$name" ] && { echo "用法: cc-use edit <name>"; exit 1; }
+  file="$PROVIDERS_DIR/${name}.json"
+  [ -f "$file" ] || { echo "找不到: $name"; exit 1; }
+  [ -w "$file" ] || { echo "providers 目录在容器内只读，请在宿主调用 cc-use edit"; exit 1; }
+  exec "${EDITOR:-vi}" "$file"
+}
+
+cmd_remove() {
+  local name="$1" file
+  [ -z "$name" ] && { echo "用法: cc-use remove <name>"; exit 1; }
+  file="$PROVIDERS_DIR/${name}.json"
+  [ -f "$file" ] || { echo "找不到: $name"; exit 1; }
+  read -rp "确认删除供应商 $name? [y/N] " ans
+  if [ "$ans" = "y" ] || [ "$ans" = "Y" ]; then
+    rm -f "$file"
+    echo "已删除: $name"
+  else
+    echo "取消"
+  fi
+}
+
+cmd_test() {
+  local name="${1:-$(current_provider)}"
+  [ -z "$name" ] && { echo "无激活供应商，且未指定 name"; exit 1; }
+  local file="$PROVIDERS_DIR/${name}.json"
+  [ -f "$file" ] || { echo "找不到: $name"; exit 1; }
+
+  local mode url token
+  mode=$(jq -r '._mode // "api-key"' "$file")
+  if [ "$mode" = "oauth" ]; then
+    echo "$name: OAuth 模式（无 base_url 可测）"
+    return 0
+  fi
+  url=$(jq -r '.ANTHROPIC_BASE_URL // empty' "$file")
+  token=$(jq -r '.ANTHROPIC_AUTH_TOKEN // .ANTHROPIC_API_KEY // empty' "$file")
+  [ -n "$url" ] || { echo "$name: 无 ANTHROPIC_BASE_URL"; exit 1; }
+
+  local code
+  code=$(curl -s -o /dev/null -w '%{http_code}' -m 5 \
+           "$url/v1/models" \
+           -H "x-api-key: $token" \
+           -H "anthropic-version: 2023-06-01" 2>/dev/null || echo "000")
+  echo "$name → $url: HTTP $code"
+}
+
+cmd_switch() {
+  local name="$1" file
+  [ -z "$name" ] && { echo "用法: cc-use <name>"; cmd_list; exit 1; }
+  file="$PROVIDERS_DIR/${name}.json"
+  [ -f "$file" ] || { echo "找不到供应商: $name"; cmd_list; exit 1; }
+
+  if [ "$(jq -r '._mode // empty' "$file")" = "oauth" ]; then
+    jq '.env = {}' "$SETTINGS" > "$SETTINGS.tmp" && mv "$SETTINGS.tmp" "$SETTINGS"
+    echo "已切换到 OAuth 模式: ${name}（如未登录请运行 cc login）"
+  else
+    jq --slurpfile p "$file" \
+       '.env = ($p[0] | with_entries(select(.key | startswith("_") | not)))' \
+       "$SETTINGS" > "$SETTINGS.tmp" && mv "$SETTINGS.tmp" "$SETTINGS"
+    echo "已切换到 API Key 供应商: $name"
+  fi
+}
+
+cmd_help() {
+  cat <<'EOF'
+用法: cc-use [子命令] [参数]
+
+查看：
+  cc-use                              列出所有供应商，★ 标记当前激活
+  cc-use list                         同上
+  cc-use current                      仅打印当前激活的供应商名
+  cc-use show <name>                  显示某供应商详情（API Key 脱敏）
+
+增删改：
+  cc-use add <name> --api-key=KEY --base-url=URL [--model=NAME] [--small-model=NAME] [--key-name=VAR]
+  cc-use add <name> --mode=oauth      创建 OAuth 模式供应商
+  cc-use add <name>                   缺参数则交互式补齐
+  cc-use edit <name>                  用 $EDITOR 编辑供应商 JSON
+  cc-use remove <name>                删除（带确认）
+
+切换：
+  cc-use <name>                       切到该供应商（OAuth 模式自动清空 env）
+
+调试：
+  cc-use test [<name>]                curl 探测 base_url 是否可达
+EOF
+}
+
+# —— 主入口 ——
+case "${1:-list}" in
+  ""|list)    cmd_list ;;
+  current)    cmd_current ;;
+  show)       shift; cmd_show "$@" ;;
+  add)        shift; cmd_add "$@" ;;
+  edit)       shift; cmd_edit "$@" ;;
+  remove|rm)  shift; cmd_remove "$@" ;;
+  test)       shift; cmd_test "$@" ;;
+  -h|--help|help) cmd_help ;;
+  *)          cmd_switch "$1" ;;
+esac

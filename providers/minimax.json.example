@@ -1,0 +1,5 @@
+{
+  "ANTHROPIC_AUTH_TOKEN": "your-minimax-api-key",
+  "ANTHROPIC_BASE_URL": "https://api.minimax.chat/anthropic",
+  "ANTHROPIC_MODEL": "minimax-m2"
+}
