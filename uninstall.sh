@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # uninstall.sh：卸载 cc / cc-use 命令软链。
 # 默认不删除 ~/.docker-cc/ 配置目录（含 OAuth 凭据等用户数据），需用户手动清理。
-set -e
+set -eo pipefail
 
 PREFIX="/usr/local"
 PURGE=0

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # install.sh：把 docker-cc 安装到当前用户。
 # 详见 docs/implementation-plan.md §9 / §9.1
-set -e
+set -eo pipefail
 
 # —— 参数解析 ——
 NO_CN_MIRROR=0
@@ -40,35 +40,6 @@ ok()    { echo "  ✓ $*"; }
 fail()  { echo "  ✗ $*" >&2; exit 1; }
 note()  { echo "    $*"; }
 
-# 探测 GH_PROXY 备用源，stdout 输出第一个连通的 prefix（可能为空=直连 GitHub）
-# 探测过程输出到 stderr 不污染 stdout
-probe_ghproxy() {
-  local target="github.com/mikefarah/yq/releases/download/v4.45.1/yq_linux_amd64"
-  local prefixes=(
-    "https://mirror.ghproxy.com/"
-    "https://ghfast.top/"
-    "https://gh-proxy.com/"
-    "https://ghps.cc/"
-    ""
-  )
-  local p
-  for p in "${prefixes[@]}"; do
-    if [ -n "$p" ]; then
-      printf "    探测 %-32s ... " "$p" >&2
-    else
-      printf "    %-39s ... " "探测 直连 GitHub（无加速）" >&2
-    fi
-    # -r 0-1024 仅下载头 1KB，快速验证连通性
-    if curl -sfL --max-time 5 -r 0-1024 -o /dev/null "${p}https://${target}" 2>/dev/null; then
-      echo "✓" >&2
-      echo "$p"
-      return 0
-    fi
-    echo "✗" >&2
-  done
-  return 1
-}
-
 # 1. 检查依赖
 echo "[1/7] 检查依赖"
 command -v docker >/dev/null 2>&1 || fail "未找到 docker，请先安装 Docker Desktop / OrbStack / Colima"
@@ -78,6 +49,8 @@ ok "docker / docker compose 可用"
 # 2. 创建目录树
 echo "[2/7] 创建 ~/.docker-cc/ 目录树"
 mkdir -p "$DOCKER_CC_HOME"/{mihomo,claude,providers,repo}
+# 含敏感数据的目录（providers 含 API key、claude 含 OAuth 凭据）权限 700
+chmod 700 "$DOCKER_CC_HOME/providers" "$DOCKER_CC_HOME/claude"
 ok "创建 $DOCKER_CC_HOME"
 
 # 3. 复制仓库内容到 ~/.docker-cc/repo/（保证 cc upgrade 时 docker compose build 有完整 context）
@@ -104,6 +77,8 @@ if [ ! -f "$REPO_DIR/.env" ]; then
   cp "$REPO_DIR/.env.example" "$REPO_DIR/.env"
   ok "已创建 $REPO_DIR/.env（请编辑填入 CLASH_SUB_URL）"
 fi
+# .env 可能含订阅 URL 内嵌 token，权限 600
+chmod 600 "$REPO_DIR/.env"
 if [ "$NO_CN_MIRROR" = "1" ]; then
   {
     grep -v -E '^(APT_MIRROR|GH_PROXY|NPM_REGISTRY)=' "$REPO_DIR/.env" 2>/dev/null || true
@@ -112,24 +87,13 @@ if [ "$NO_CN_MIRROR" = "1" ]; then
     echo "NPM_REGISTRY=https://registry.npmjs.org"
   } > "$REPO_DIR/.env.tmp"
   mv "$REPO_DIR/.env.tmp" "$REPO_DIR/.env"
+  chmod 600 "$REPO_DIR/.env"
   ok "--no-cn-mirror：已关闭国内加速源"
 elif [ "$SKIP_BUILD" != "1" ]; then
-  # 自动 probe GH_PROXY：避免遇到某个镜像源临时挂掉（如 mirror.ghproxy.com）
+  # 自动 probe GH_PROXY（共享脚本 bin/_cc-probe-ghproxy 维护探测逻辑 + 镜像源列表）
   echo "  探测可用的 GH_PROXY 镜像源..."
-  if SELECTED_GH_PROXY=$(probe_ghproxy); then
-    {
-      grep -v '^GH_PROXY=' "$REPO_DIR/.env" 2>/dev/null || true
-      echo "GH_PROXY=${SELECTED_GH_PROXY}"
-    } > "$REPO_DIR/.env.tmp"
-    mv "$REPO_DIR/.env.tmp" "$REPO_DIR/.env"
-    if [ -n "$SELECTED_GH_PROXY" ]; then
-      ok "选用 GH_PROXY=${SELECTED_GH_PROXY}"
-    else
-      ok "选用 直连 GitHub（无加速）"
-    fi
-  else
-    fail "所有 GH_PROXY 镜像源都不可达。检查网络或加 --no-cn-mirror"
-  fi
+  "$PROJECT_ROOT/bin/_cc-probe-ghproxy" "$REPO_DIR/.env" \
+    || fail "所有 GH_PROXY 镜像源都不可达。检查网络或加 --no-cn-mirror"
 fi
 
 # 5. docker build
@@ -149,8 +113,10 @@ for tpl in "$PROJECT_ROOT/providers/"*.json.example; do
   target="$DOCKER_CC_HOME/providers/${name}.json"
   if [ ! -f "$target" ]; then
     cp "$tpl" "$target"
+    chmod 600 "$target"     # 含明文 API key，仅当前用户可读
     ok "$(basename "$target")（首次创建）"
   else
+    chmod 600 "$target" 2>/dev/null || true   # 修旧文件权限
     note "$(basename "$target") 已存在，跳过"
   fi
 done
@@ -160,16 +126,20 @@ echo "[6/7] 安装 cc / cc-use 命令"
 if [ "$SKIP_LINK" = "1" ]; then
   note "(--skip-link) 跳过"
 else
-  mkdir -p "$PREFIX/bin"
-  # /usr/local/bin 通常需要 sudo；其他 prefix 默认用户可写
+  # /usr/local/bin 创建可能需要 sudo（父目录 /usr/local 通常 root 拥有）
+  if ! mkdir -p "$PREFIX/bin" 2>/dev/null; then
+    sudo mkdir -p "$PREFIX/bin" \
+      || fail "无法创建 $PREFIX/bin（既无写权限，sudo 也失败）。换 --prefix=$HOME/.local 试试"
+  fi
+  # 用户能直接写 → ln；否则 sudo ln
   if [ -w "$PREFIX/bin" ]; then
     LN="ln"
   else
     LN="sudo ln"
     note "$PREFIX/bin 需要 sudo 权限"
   fi
-  $LN -sf "$PROJECT_ROOT/bin/cc"     "$PREFIX/bin/cc"
-  $LN -sf "$PROJECT_ROOT/bin/cc-use" "$PREFIX/bin/cc-use"
+  $LN -sf "$PROJECT_ROOT/bin/cc"     "$PREFIX/bin/cc"     || fail "软链 cc 失败"
+  $LN -sf "$PROJECT_ROOT/bin/cc-use" "$PREFIX/bin/cc-use" || fail "软链 cc-use 失败"
   ok "$PREFIX/bin/cc → $PROJECT_ROOT/bin/cc"
   ok "$PREFIX/bin/cc-use → $PROJECT_ROOT/bin/cc-use"
 fi

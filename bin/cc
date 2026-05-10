@@ -2,7 +2,7 @@
 # cc：宿主端 wrapper，docker compose 的薄封装。
 # 详见 docs/implementation-plan.md §7.1
 
-set -e
+set -eo pipefail
 
 # 关键：先保存用户调用 cc 时的工作目录，再 cd 到 compose 目录
 # 否则 docker-compose.yml 里的 ${PWD} 会被解析成 compose 目录，工作目录就挂错了
@@ -47,6 +47,7 @@ case "${1:-}" in
       url="$1"
       { grep -v '^CLASH_SUB_URL=' .env 2>/dev/null || true; echo "CLASH_SUB_URL=\"${url}\""; } > .env.tmp
       mv .env.tmp .env
+      chmod 600 .env       # 订阅 URL 可能内嵌 token
       REFRESH_SUB=1 exec docker compose up -d mihomo
     else
       # 之后：cc up 直接复用 .env 里的 URL
@@ -75,22 +76,8 @@ case "${1:-}" in
   refresh)
           REFRESH_SUB=1 exec docker compose up -d --force-recreate mihomo ;;
   probe)
-          # 重新探测 GH_PROXY 备用源，写入 .env（cc upgrade 失败时手动救援）
-          target="github.com/mikefarah/yq/releases/download/v4.45.1/yq_linux_amd64"
-          for p in "https://mirror.ghproxy.com/" "https://ghfast.top/" "https://gh-proxy.com/" "https://ghps.cc/" ""; do
-            if [ -n "$p" ]; then printf "  探测 %-32s ... " "$p"
-            else                  printf "  %-39s ... " "探测 直连 GitHub（无加速）"; fi
-            if curl -sfL --max-time 5 -r 0-1024 -o /dev/null "${p}https://${target}" 2>/dev/null; then
-              echo "✓"
-              { grep -v '^GH_PROXY=' .env 2>/dev/null || true; echo "GH_PROXY=${p}"; } > .env.tmp
-              mv .env.tmp .env
-              echo "已写入 .env：GH_PROXY=${p:-（直连）}"
-              exit 0
-            fi
-            echo "✗"
-          done
-          echo "所有 GH_PROXY 源都不可达"
-          exit 1 ;;
+          # 共享脚本（与 install.sh 同源）维护探测逻辑 + 镜像源列表
+          exec "$COMPOSE_DIR/bin/_cc-probe-ghproxy" "$COMPOSE_DIR/.env" ;;
   upgrade)
           # ⚠ 不要用 cc update —— claude code 装在镜像层，--rm 容器内 npm 更新会被丢弃。
           # 升级正确做法是 rebuild 镜像。

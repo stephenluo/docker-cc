@@ -645,7 +645,8 @@ docker-cc/
 ├── .gitignore                      # 包含 .env、~/.docker-cc/ 等敏感路径
 ├── bin/
 │   ├── cc                          # 宿主 wrapper
-│   └── cc-use                      # 切供应商（宿主 + 容器复用同一份）
+│   ├── cc-use                      # 切供应商（宿主 + 容器复用同一份）
+│   └── _cc-probe-ghproxy           # 探测可用 GH_PROXY 镜像源（install.sh + cc probe 共享）
 ├── providers/                      # 模板，install.sh 复制到 ~/.docker-cc/providers
 │   ├── anthropic.json.example      # API Key 模式
 │   ├── claude-account.json.example # OAuth 模式（Claude Pro/Max 订阅）
@@ -1072,6 +1073,12 @@ bats tests/integration/ # 期望：全绿（端到端 ~10+ 场景）
 | 25 | zsh 缓存 `cc` 路径为 `/usr/bin/cc`（C 编译器），新装的 `/usr/local/bin/cc` 不被识别 | §12 补操作说明：`hash -r` 或新开终端 | ✅ 文档化 |
 | 26 | `cc panel` 进入后 metacubexd 报 ERR_CONNECTION_REFUSED：浏览器端硬编码 `127.0.0.1:9090`，但端口避让设计映射到 19090 | `~/.docker-cc/repo/docker-compose.override.yml` 临时加 9090:9090 双映射 | 🟡 临时 |
 | 27 | 镜像 `/etc/mihomo/ui` 被卷挂载遮蔽，mihomo 启动时自己又下载一份 UI（绕路） | UI 应解压到非挂载路径如 `/usr/share/metacubexd/`，entrypoint 改 `external-ui` 指向那里 | ⬜ 待修 |
+| 28 | providers/*.json 文件权限默认 644（API key 明文，多用户机器风险）| install.sh + cc-use add 写入时 `chmod 600`；providers 目录 `chmod 700` | ✅ 已修 |
+| 29 | .env 文件权限默认 644（CLASH_SUB_URL 可能内嵌订阅 token）| 所有写入位置 `chmod 600` | ✅ 已修 |
+| 30 | install.sh 与 bin/cc probe 探测逻辑代码重复 | 抽到共享脚本 `bin/_cc-probe-ghproxy`，两处统一调用 | ✅ 已修 |
+| 31 | install.sh `mkdir -p $PREFIX/bin` 失败未检查（`/usr/local` 无写权限+无 sudo 时静默） | 加 sudo fallback + 失败 fail 提示 `--prefix` 替代 | ✅ 已修 |
+| 32 | 所有脚本仅 `set -e`，管道中非末尾命令错误被忽略 | 改为 `set -eo pipefail` | ✅ 已修 |
+| 33 | `cc-use test` 探 `/v1/models`，DeepSeek 等兼容供应商不实现，永远返回 404 | 改成 POST `/v1/messages` 占位 model + 状态码语义化解读；附带 `Authorization: Bearer` 头 | ✅ 已修 |
 
 #### 已知待真实环境验证项
 
@@ -1292,7 +1299,8 @@ docker-cc/
 ├── .gitignore
 ├── bin/
 │   ├── cc
-│   └── cc-use
+│   ├── cc-use
+│   └── _cc-probe-ghproxy           # 共享探测脚本，install.sh 和 cc probe 调用
 ├── providers/
 │   ├── anthropic.json.example
 │   ├── claude-account.json.example

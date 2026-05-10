@@ -27,7 +27,16 @@
 - **`cc --version` / `cc -v`**：显示版本号并退出，不透传给 claude
 - **每次 cc 启动 banner**：在 stderr 打印 `cc v<version>`，不污染 stdout 管道
 
+### Security（代码审核发现）
+- **#28 providers/*.json 文件权限**：含明文 API key，原默认 644 同组/其他用户可读。`install.sh` 复制 + `cc-use add` 写入时显式 `chmod 600`；`~/.docker-cc/providers` 目录 `chmod 700`。
+- **#29 .env 文件权限**：`CLASH_SUB_URL` 可能内嵌订阅 token。`install.sh` 创建/更新 + `cc up <url>` 写入 + `bin/_cc-probe-ghproxy` 写入时全部 `chmod 600`。
+
 ### Fixed（开发期间发现）
+- **`cc-use test` 探测错误的 endpoint**：原来探 `/v1/models`，DeepSeek 等兼容供应商一般没实现，永远返回 404 无法判断真实可用性。改成 POST `/v1/messages` 占位 model，通过 HTTP 状态码语义化判断（400 = endpoint+auth OK / 401 = token 错 / 000 = 网络不通 等），同时附带 `Authorization: Bearer` 头适配更多供应商。
+- **#30 GH_PROXY probe 代码重复**：`install.sh` 和 `bin/cc probe` 之前各内联一份探测逻辑（5 镜像源列表 + curl 探测 + 写 .env），独立维护易脱节。抽到共享脚本 `bin/_cc-probe-ghproxy`，两处统一调用。
+- **#31 install.sh `mkdir -p $PREFIX/bin` 未检查失败**：`/usr/local` 只读且无 sudo 时静默失败。改为先尝试 `mkdir -p`，失败时 fallback `sudo mkdir -p`，仍失败则 fail 并建议 `--prefix=$HOME/.local`。
+- **#32 全局 `set -eo pipefail`**：原来仅 `set -e`，管道中错误（如 `curl ... | jq ...`）的非末尾命令失败会被忽略。所有 5 个脚本（cc / cc-use / entrypoint / install / uninstall + 新增 _cc-probe-ghproxy）改为 `set -eo pipefail`。
+
 - **macOS Bash 3.2 多字节兼容性**：`cc-use` 中 `$name(中文`...）` 在 Apple Bash 3.2.57 下变量展开为空 + 中文首字节丢失。修复：所有 `$var` 紧跟非 ASCII 字符的位置改用 `${var}` 显式分隔（cc-use 4 处）。
 - **`cc panel` 默认连不上**：metacubexd 浏览器端硬编码 `127.0.0.1:9090`，但端口避让设计映射到 19090，导致首次进 panel 显示"无法连接后端"。临时修复：用户手动 `~/.docker-cc/repo/docker-compose.override.yml` 加 `9090:9090` 第二映射。永久方案待定（破坏 Verge 端口避让 vs 零配置 panel 的 trade-off）。
 - **`mirror.ghproxy.com` 频繁挂掉**：build 卡在 `curl: SSL_ERROR_SYSCALL`。修复：`install.sh` 在 build 前自动 probe 5 个 GH_PROXY 备用源选第一个连通的，写入 .env。

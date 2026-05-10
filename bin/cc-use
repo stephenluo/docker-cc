@@ -2,7 +2,7 @@
 # cc-use：LLM 供应商管理 + 切换。同一份脚本同时部署在宿主和容器内。
 # 详见 docs/implementation-plan.md §7.2
 
-set -e
+set -eo pipefail
 
 # 容器/宿主自动适配路径
 if [ -f /.dockerenv ]; then
@@ -115,6 +115,7 @@ cmd_add() {
   if [ "$mode" = "oauth" ]; then
     jq -n '{ _mode: "oauth", _comment: "OAuth 模式：切到此供应商后运行 cc login" }' \
       > "$file"
+    chmod 600 "$file"   # 含敏感配置（即使 OAuth 模板无 token，保持权限一致）
     echo "已创建 OAuth 供应商: ${name}（运行 cc-use ${name} && cc login 完成登录）"
     return
   fi
@@ -131,7 +132,8 @@ cmd_add() {
      (if $m  == "" then {} else {ANTHROPIC_MODEL: $m} end) +
      (if $sm == "" then {} else {ANTHROPIC_SMALL_FAST_MODEL: $sm} end)' \
     > "$file"
-  echo "已添加供应商: $name → $file"
+  chmod 600 "$file"     # 含明文 API key，仅当前用户可读
+  echo "已添加供应商: ${name} → $file"
 }
 
 cmd_edit() {
@@ -161,24 +163,51 @@ cmd_test() {
   local name="${1:-$(current_provider)}"
   [ -z "$name" ] && { echo "无激活供应商，且未指定 name"; exit 1; }
   local file="$PROVIDERS_DIR/${name}.json"
-  [ -f "$file" ] || { echo "找不到: $name"; exit 1; }
+  [ -f "$file" ] || { echo "找不到: ${name}"; exit 1; }
 
   local mode url token
   mode=$(jq -r '._mode // "api-key"' "$file")
   if [ "$mode" = "oauth" ]; then
-    echo "$name: OAuth 模式（无 base_url 可测）"
+    echo "${name}: OAuth 模式（无 base_url 可测，靠 ~/.claude/.credentials.json）"
     return 0
   fi
   url=$(jq -r '.ANTHROPIC_BASE_URL // empty' "$file")
   token=$(jq -r '.ANTHROPIC_AUTH_TOKEN // .ANTHROPIC_API_KEY // empty' "$file")
-  [ -n "$url" ] || { echo "$name: 无 ANTHROPIC_BASE_URL"; exit 1; }
+  [ -n "$url" ] || { echo "${name}: 无 ANTHROPIC_BASE_URL"; exit 1; }
 
+  # 探测 /v1/messages（Anthropic API 核心接口，所有兼容供应商都实现）
+  # 用最小 POST + 占位 model：max_tokens=1 + 1 字符 content，正常情况下 model 错会返回 400
+  # 同时带 x-api-key（Anthropic 标准）和 Bearer（部分供应商也接受），增加适配性
   local code
   code=$(curl -s -o /dev/null -w '%{http_code}' -m 5 \
-           "$url/v1/models" \
+           -X POST "$url/v1/messages" \
            -H "x-api-key: $token" \
-           -H "anthropic-version: 2023-06-01" 2>/dev/null || echo "000")
-  echo "$name → $url: HTTP $code"
+           -H "Authorization: Bearer $token" \
+           -H "anthropic-version: 2023-06-01" \
+           -H "Content-Type: application/json" \
+           -d '{"model":"__cc_probe__","max_tokens":1,"messages":[{"role":"user","content":"."}]}' \
+           2>/dev/null || echo "000")
+
+  printf "%s → %s: HTTP %s  " "${name}" "$url" "$code"
+  case "$code" in
+    200|201)
+      echo "意外的 200（探测 model 名应该不存在）—— endpoint 工作但行为异常" ;;
+    400|404)
+      # 400 = body/model 校验错；404 在 /v1/messages 上多半是 unknown model（具体看 provider）
+      echo "✓ endpoint 通 + token 有效（占位 model 被拒是预期）" ;;
+    401|403)
+      echo "✗ token 无效或权限错（base_url 可能 OK）" ;;
+    405)
+      echo "✗ POST 不被允许（base_url 路径可能错）" ;;
+    422)
+      echo "✓ endpoint 通（请求格式被校验）" ;;
+    5*)
+      echo "✗ 服务端故障（${code}），稍后重试" ;;
+    000)
+      echo "✗ 网络不通（mihomo 代理 / DNS / 节点 任一可能）" ;;
+    *)
+      echo "（未知状态）" ;;
+  esac
 }
 
 cmd_switch() {

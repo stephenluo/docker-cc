@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# 共享脚本：探测可用的 GH_PROXY 镜像源
+# 被 install.sh 和 bin/cc probe 调用，集中维护探测逻辑 + 镜像源列表
+#
+# 用法：
+#   _cc-probe-ghproxy              # 仅探测，stdout 输出第一个连通的 prefix（可能为空=直连）
+#   _cc-probe-ghproxy <env-file>   # 探测后直接把 GH_PROXY=<prefix> 写入指定 .env 文件（chmod 600）
+#
+# 退出码：0 = 找到可用源；1 = 全挂
+
+set -eo pipefail
+
+# 探测目标（任意 GitHub releases 文件即可，HEAD 1KB 验证连通性）
+target="github.com/mikefarah/yq/releases/download/v4.45.1/yq_linux_amd64"
+prefixes=(
+  "https://mirror.ghproxy.com/"
+  "https://ghfast.top/"
+  "https://gh-proxy.com/"
+  "https://ghps.cc/"
+  ""
+)
+
+selected=""
+for p in "${prefixes[@]}"; do
+  if [ -n "$p" ]; then
+    printf "  探测 %-32s ... " "$p" >&2
+  else
+    printf "  %-39s ... " "探测 直连 GitHub（无加速）" >&2
+  fi
+  if curl -sfL --max-time 5 -r 0-1024 -o /dev/null "${p}https://${target}" 2>/dev/null; then
+    echo "✓" >&2
+    selected="$p"
+    break
+  fi
+  echo "✗" >&2
+done
+
+if [ -z "${selected+x}" ] || [ -z "$selected" ] && [ "${prefixes[-1]}" != "" ]; then
+  echo "所有 GH_PROXY 源都不可达" >&2
+  exit 1
+fi
+
+if [ -n "${1:-}" ]; then
+  envfile="$1"
+  [ -f "$envfile" ] || touch "$envfile"
+  { grep -v '^GH_PROXY=' "$envfile" 2>/dev/null || true; echo "GH_PROXY=${selected}"; } > "${envfile}.tmp"
+  mv "${envfile}.tmp" "$envfile"
+  chmod 600 "$envfile"
+  echo "已写入 ${envfile}：GH_PROXY=${selected:-（直连）}" >&2
+else
+  printf '%s\n' "$selected"
+fi
