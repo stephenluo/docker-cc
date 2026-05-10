@@ -22,13 +22,13 @@ setup() { isolate_integration_env; }
   [ "$output" = "marker-content" ]
 }
 
-@test "cc 脚本 cd 后仍能挂载用户原始 PWD（HOST_PWD 机制，回归 #2）" {
+@test "dcc 脚本 cd 后仍能挂载用户原始 PWD（HOST_PWD 机制，回归 #2）" {
   d="$BATS_TEST_TMPDIR/some-project"
   mkdir -p "$d"
   echo "ok-from-host-pwd" > "$d/MARKER"
   cd "$d"
 
-  # 模拟 cc 脚本：保存 HOST_PWD 然后 cd，期望 ${HOST_PWD} 被解析成 $d
+  # 模拟 dcc 脚本：保存 HOST_PWD 然后 cd，期望 ${HOST_PWD} 被解析成 $d
   run env HOST_PWD="$d" docker compose -f "$DOCKER_CC_HOME/docker-compose.yml" \
     run --rm --no-deps --entrypoint cat cc /workspace/MARKER
   [ "$status" -eq 0 ]

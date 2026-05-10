@@ -4,7 +4,7 @@ load ../fixtures/helpers
 setup() { isolate_unit_env; }
 
 @test "add: api-key 模式生成完整 JSON" {
-  run cc-use add foo \
+  run dcc-use add foo \
     --api-key=sk-test \
     --base-url=https://api.example.com \
     --model=foo-pro \
@@ -22,7 +22,7 @@ setup() { isolate_unit_env; }
 }
 
 @test "add: --mode=oauth 仅写 _mode 字段" {
-  run cc-use add my-account --mode=oauth
+  run dcc-use add my-account --mode=oauth
   [ "$status" -eq 0 ]
   run jq -r '._mode' "$PROVIDERS_DIR/my-account.json"
   [ "$output" = "oauth" ]
@@ -31,7 +31,7 @@ setup() { isolate_unit_env; }
 }
 
 @test "add: --key-name=ANTHROPIC_API_KEY 写到正确字段" {
-  run cc-use add bar --api-key=K --base-url=U --key-name=ANTHROPIC_API_KEY
+  run dcc-use add bar --api-key=K --base-url=U --key-name=ANTHROPIC_API_KEY
   [ "$status" -eq 0 ]
   run jq -r '.ANTHROPIC_API_KEY' "$PROVIDERS_DIR/bar.json"
   [ "$output" = "K" ]
@@ -40,14 +40,14 @@ setup() { isolate_unit_env; }
 }
 
 @test "add: 未知参数报错" {
-  run cc-use add foo --invalid=x --api-key=K --base-url=U
+  run dcc-use add foo --invalid=x --api-key=K --base-url=U
   [ "$status" -ne 0 ]
   [[ "$output" =~ "未知参数" ]]
 }
 
 @test "add: 重名报错（已存在则拒绝覆盖）" {
-  cc-use add foo --api-key=K1 --base-url=U
-  run cc-use add foo --api-key=K2 --base-url=U
+  dcc-use add foo --api-key=K1 --base-url=U
+  run dcc-use add foo --api-key=K2 --base-url=U
   [ "$status" -ne 0 ]
   [[ "$output" =~ "已存在" ]]
   # 原值不变

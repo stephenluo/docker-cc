@@ -7,7 +7,7 @@
 1. `docker --version` / `docker compose version` 满足最低
 2. `bats tests/unit/`：全绿
 3. `bats tests/integration/`：全绿
-4. 手动一次 `cc up <url> && cc panel && cc -p "hi"` 跑完整链路
+4. 手动一次 `dcc up <url> && dcc panel && dcc -p "hi"` 跑完整链路
 
 ## 平台 × Docker 实现 × Compose 版本
 

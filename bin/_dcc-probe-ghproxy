@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # 共享脚本：探测可用的 GH_PROXY 镜像源
-# 被 install.sh 和 bin/cc probe 调用，集中维护探测逻辑 + 镜像源列表
+# 被 install.sh 和 bin/dcc probe 调用，集中维护探测逻辑 + 镜像源列表
 #
 # 用法：
-#   _cc-probe-ghproxy              # 仅探测，stdout 输出第一个连通的 prefix（可能为空=直连）
-#   _cc-probe-ghproxy <env-file>   # 探测后直接把 GH_PROXY=<prefix> 写入指定 .env 文件（chmod 600）
+#   _dcc-probe-ghproxy              # 仅探测，stdout 输出第一个连通的 prefix（可能为空=直连）
+#   _dcc-probe-ghproxy <env-file>   # 探测后直接把 GH_PROXY=<prefix> 写入指定 .env 文件（chmod 600）
 #
 # 退出码：0 = 找到可用源；1 = 全挂
 

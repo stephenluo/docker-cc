@@ -1,7 +1,7 @@
 services:
   mihomo:
     image: docker-cc:latest
-    build:                                  # cc upgrade 走 docker compose build
+    build:                                  # dcc upgrade 走 docker compose build
       context: .
       args:
         APT_MIRROR: ${APT_MIRROR-mirrors.tuna.tsinghua.edu.cn}
@@ -14,9 +14,9 @@ services:
       - ${HOME}/.docker-cc/mihomo:/etc/mihomo
     environment:
       - CLASH_SUB_URL=${CLASH_SUB_URL}      # 订阅 URL，从 .env 读
-      - REFRESH_SUB=${REFRESH_SUB:-0}       # cc up <url> / cc refresh 时透传 1，强制重拉
+      - REFRESH_SUB=${REFRESH_SUB:-0}       # dcc up <url> / dcc refresh 时透传 1，强制重拉
     ports:
-      # 7890 默认不暴露：cc 容器走 docker 内网（mihomo:7890）访问，无需经过宿主端口。
+      # 7890 默认不暴露：dcc 容器走 docker 内网（mihomo:7890）访问，无需经过宿主端口。
       # 若想让宿主其他程序也用这个代理，新建 docker-compose.override.yml 加 ports。
       - "127.0.0.1:${UI_PORT:-19090}:9090"   # Web 面板，默认 19090 避开 Clash Verge 的 9090
     networks: [cc-net]
@@ -26,11 +26,11 @@ services:
     profiles: ["cli"]                       # 默认不启动，仅 run 时使用
     depends_on: [mihomo]
     volumes:
-      - ${HOST_PWD:-${PWD}}:/workspace       # cc 脚本设置 HOST_PWD=用户原始工作目录
+      - ${HOST_PWD:-${PWD}}:/workspace       # dcc 脚本设置 HOST_PWD=用户原始工作目录
       - ${HOME}/.docker-cc/claude:/root/.claude
       - ${HOME}/.docker-cc/providers:/root/.cc-providers:ro
     environment:
-      - CC_PROVIDER=${CC_PROVIDER:-}        # 可选：entrypoint 启动时 cc-use 切到该供应商
+      - DCC_PROVIDER=${DCC_PROVIDER:-}        # 可选：entrypoint 启动时 dcc-use 切到该供应商
     networks: [cc-net]
     stdin_open: true
     tty: true

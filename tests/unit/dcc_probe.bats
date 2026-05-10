@@ -1,13 +1,13 @@
 #!/usr/bin/env bats
-# cc probe 子命令：探测 GH_PROXY 备用源（开发期发现 mirror.ghproxy.com 经常挂）
+# dcc probe 子命令：探测 GH_PROXY 备用源（开发期发现 mirror.ghproxy.com 经常挂）
 load ../fixtures/helpers
 
 setup() { isolate_integration_env; }
 
-@test "cc probe: 探测后写入 .env 的 GH_PROXY（成功路径）" {
+@test "dcc probe: 探测后写入 .env 的 GH_PROXY（成功路径）" {
   # 真实跑会 curl 5 个外网源；CI 中跑此测试需要外网
-  # 本地开发可 skip：bats --filter '...probe.*成功' tests/unit/cc_probe.bats
-  run cc probe
+  # 本地开发可 skip：bats --filter '...probe.*成功' tests/unit/dcc_probe.bats
+  run dcc probe
   [ "$status" -eq 0 ]
   run grep '^GH_PROXY=' "$DOCKER_CC_HOME/.env"
   [[ "$output" =~ ^GH_PROXY= ]]
@@ -15,9 +15,9 @@ setup() { isolate_integration_env; }
   [[ "$output" =~ ^GH_PROXY=(https://.*/|)$ ]]
 }
 
-@test "cc probe: 不重复 GH_PROXY 行（多次调用幂等）" {
-  cc probe 2>/dev/null || true
-  cc probe 2>/dev/null || true
+@test "dcc probe: 不重复 GH_PROXY 行（多次调用幂等）" {
+  dcc probe 2>/dev/null || true
+  dcc probe 2>/dev/null || true
   run grep -c '^GH_PROXY=' "$DOCKER_CC_HOME/.env"
   [ "$output" = "1" ]
 }

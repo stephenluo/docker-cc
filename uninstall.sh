@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# uninstall.sh：卸载 cc / cc-use 命令软链。
+# uninstall.sh：卸载 dcc / dcc-use 命令软链。
 # 默认不删除 ~/.docker-cc/ 配置目录（含 OAuth 凭据等用户数据），需用户手动清理。
 set -eo pipefail
 
@@ -24,7 +24,7 @@ EOF
 done
 
 echo "[1/3] 移除命令软链"
-for cmd in cc cc-use; do
+for cmd in dcc dcc-use; do
   link="$PREFIX/bin/$cmd"
   if [ -L "$link" ]; then
     if [ -w "$PREFIX/bin" ]; then rm -f "$link"; else sudo rm -f "$link"; fi

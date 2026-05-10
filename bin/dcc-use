@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# cc-use：LLM 供应商管理 + 切换。同一份脚本同时部署在宿主和容器内。
+# dcc-use：LLM 供应商管理 + 切换。同一份脚本同时部署在宿主和容器内。
 # 详见 docs/implementation-plan.md §7.2
 
 set -eo pipefail
@@ -78,7 +78,7 @@ cmd_current() {
 
 cmd_show() {
   local name="$1" file
-  [ -z "$name" ] && { echo "用法: cc-use show <name>"; exit 1; }
+  [ -z "$name" ] && { echo "用法: dcc-use show <name>"; exit 1; }
   file="$PROVIDERS_DIR/${name}.json"
   [ -f "$file" ] || { echo "找不到供应商: $name"; exit 1; }
   # token 字段脱敏
@@ -93,7 +93,7 @@ cmd_show() {
 
 cmd_add() {
   local name="$1"; shift || true
-  [ -z "$name" ] && { echo "用法: cc-use add <name> [--mode=oauth | --api-key=K --base-url=U ...]"; exit 1; }
+  [ -z "$name" ] && { echo "用法: dcc-use add <name> [--mode=oauth | --api-key=K --base-url=U ...]"; exit 1; }
 
   local mode="api-key" api_key="" base_url="" model="" small_model="" key_name="ANTHROPIC_AUTH_TOKEN"
   while [ $# -gt 0 ]; do
@@ -110,13 +110,13 @@ cmd_add() {
   done
 
   local file="$PROVIDERS_DIR/${name}.json"
-  [ -f "$file" ] && { echo "供应商已存在: ${name}（用 cc-use edit ${name} 修改，或先 cc-use remove ${name}）"; exit 1; }
+  [ -f "$file" ] && { echo "供应商已存在: ${name}（用 dcc-use edit ${name} 修改，或先 dcc-use remove ${name}）"; exit 1; }
 
   if [ "$mode" = "oauth" ]; then
-    jq -n '{ _mode: "oauth", _comment: "OAuth 模式：切到此供应商后运行 cc login" }' \
+    jq -n '{ _mode: "oauth", _comment: "OAuth 模式：切到此供应商后运行 dcc login" }' \
       > "$file"
     chmod 600 "$file"   # 含敏感配置（即使 OAuth 模板无 token，保持权限一致）
-    echo "已创建 OAuth 供应商: ${name}（运行 cc-use ${name} && cc login 完成登录）"
+    echo "已创建 OAuth 供应商: ${name}（运行 dcc-use ${name} && dcc login 完成登录）"
     return
   fi
 
@@ -138,16 +138,16 @@ cmd_add() {
 
 cmd_edit() {
   local name="$1" file
-  [ -z "$name" ] && { echo "用法: cc-use edit <name>"; exit 1; }
+  [ -z "$name" ] && { echo "用法: dcc-use edit <name>"; exit 1; }
   file="$PROVIDERS_DIR/${name}.json"
   [ -f "$file" ] || { echo "找不到: $name"; exit 1; }
-  [ -w "$file" ] || { echo "providers 目录在容器内只读，请在宿主调用 cc-use edit"; exit 1; }
+  [ -w "$file" ] || { echo "providers 目录在容器内只读，请在宿主调用 dcc-use edit"; exit 1; }
   exec "${EDITOR:-vi}" "$file"
 }
 
 cmd_remove() {
   local name="$1" file
-  [ -z "$name" ] && { echo "用法: cc-use remove <name>"; exit 1; }
+  [ -z "$name" ] && { echo "用法: dcc-use remove <name>"; exit 1; }
   file="$PROVIDERS_DIR/${name}.json"
   [ -f "$file" ] || { echo "找不到: $name"; exit 1; }
   read -rp "确认删除供应商 $name? [y/N] " ans
@@ -212,13 +212,13 @@ cmd_test() {
 
 cmd_switch() {
   local name="$1" file
-  [ -z "$name" ] && { echo "用法: cc-use <name>"; cmd_list; exit 1; }
+  [ -z "$name" ] && { echo "用法: dcc-use <name>"; cmd_list; exit 1; }
   file="$PROVIDERS_DIR/${name}.json"
   [ -f "$file" ] || { echo "找不到供应商: $name"; cmd_list; exit 1; }
 
   if [ "$(jq -r '._mode // empty' "$file")" = "oauth" ]; then
     jq '.env = {}' "$SETTINGS" > "$SETTINGS.tmp" && mv "$SETTINGS.tmp" "$SETTINGS"
-    echo "已切换到 OAuth 模式: ${name}（如未登录请运行 cc login）"
+    echo "已切换到 OAuth 模式: ${name}（如未登录请运行 dcc login）"
   else
     jq --slurpfile p "$file" \
        '.env = ($p[0] | with_entries(select(.key | startswith("_") | not)))' \
@@ -229,26 +229,26 @@ cmd_switch() {
 
 cmd_help() {
   cat <<'EOF'
-用法: cc-use [子命令] [参数]
+用法: dcc-use [子命令] [参数]
 
 查看：
-  cc-use                              列出所有供应商，★ 标记当前激活
-  cc-use list                         同上
-  cc-use current                      仅打印当前激活的供应商名
-  cc-use show <name>                  显示某供应商详情（API Key 脱敏）
+  dcc-use                              列出所有供应商，★ 标记当前激活
+  dcc-use list                         同上
+  dcc-use current                      仅打印当前激活的供应商名
+  dcc-use show <name>                  显示某供应商详情（API Key 脱敏）
 
 增删改：
-  cc-use add <name> --api-key=KEY --base-url=URL [--model=NAME] [--small-model=NAME] [--key-name=VAR]
-  cc-use add <name> --mode=oauth      创建 OAuth 模式供应商
-  cc-use add <name>                   缺参数则交互式补齐
-  cc-use edit <name>                  用 $EDITOR 编辑供应商 JSON
-  cc-use remove <name>                删除（带确认）
+  dcc-use add <name> --api-key=KEY --base-url=URL [--model=NAME] [--small-model=NAME] [--key-name=VAR]
+  dcc-use add <name> --mode=oauth      创建 OAuth 模式供应商
+  dcc-use add <name>                   缺参数则交互式补齐
+  dcc-use edit <name>                  用 $EDITOR 编辑供应商 JSON
+  dcc-use remove <name>                删除（带确认）
 
 切换：
-  cc-use <name>                       切到该供应商（OAuth 模式自动清空 env）
+  dcc-use <name>                       切到该供应商（OAuth 模式自动清空 env）
 
 调试：
-  cc-use test [<name>]                curl 探测 base_url 是否可达
+  dcc-use test [<name>]                curl 探测 base_url 是否可达
 EOF
 }
 

@@ -45,8 +45,8 @@ RUN if [ -n "$NPM_REGISTRY" ]; then npm config set registry "$NPM_REGISTRY"; fi 
 
 # 入口脚本与工具
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
-COPY bin/cc-use /usr/local/bin/cc-use
-RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/cc-use
+COPY bin/dcc-use /usr/local/bin/dcc-use
+RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/dcc-use
 
 WORKDIR /workspace
 ENV HTTP_PROXY=http://mihomo:7890 \

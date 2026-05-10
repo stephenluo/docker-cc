@@ -6,7 +6,7 @@ load ../fixtures/helpers
 setup() { isolate_integration_env; }
 teardown() { stop_mock_subscription_server; cd "$DOCKER_CC_HOME" && docker compose down 2>/dev/null || true; }
 
-@test "首次 cc up <mock-url> 不会卡死在 HTTP_PROXY 回环（30s 超时守门）" {
+@test "首次 dcc up <mock-url> 不会卡死在 HTTP_PROXY 回环（30s 超时守门）" {
   # 复制 test override 让 mihomo 容器能解析 host.docker.internal
   cp "$PROJECT_ROOT/tests/fixtures/docker-compose.test.yml" "$DOCKER_CC_HOME/"
   export COMPOSE_FILE="docker-compose.yml:docker-compose.test.yml"
@@ -14,7 +14,7 @@ teardown() { stop_mock_subscription_server; cd "$DOCKER_CC_HOME" && docker compo
   url=$(start_mock_subscription_server 8765)
 
   # 30s 超时：HTTP_PROXY 回环 bug 复现时会无限等待
-  run timeout 30 cc up "$url"
+  run timeout 30 dcc up "$url"
   [ "$status" -eq 0 ]
 
   # mihomo 容器应在跑
@@ -26,7 +26,7 @@ teardown() { stop_mock_subscription_server; cd "$DOCKER_CC_HOME" && docker compo
   cp "$PROJECT_ROOT/tests/fixtures/docker-compose.test.yml" "$DOCKER_CC_HOME/"
   export COMPOSE_FILE="docker-compose.yml:docker-compose.test.yml"
   url=$(start_mock_subscription_server 8765)
-  cc up "$url"
+  dcc up "$url"
   sleep 2
   run docker compose logs mihomo
   [[ "$output" =~ "拉取订阅" ]]

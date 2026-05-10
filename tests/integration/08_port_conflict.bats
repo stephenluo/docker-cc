@@ -10,7 +10,7 @@ teardown() { stop_mock_subscription_server; cd "$DOCKER_CC_HOME" && docker compo
   export COMPOSE_FILE="docker-compose.yml:docker-compose.test.yml"
 
   url=$(start_mock_subscription_server 8765)
-  cc up "$url"
+  dcc up "$url"
 
   # 等 mihomo 起来
   for i in 1 2 3 4 5; do
@@ -30,7 +30,7 @@ teardown() { stop_mock_subscription_server; cd "$DOCKER_CC_HOME" && docker compo
 
   echo "UI_PORT=20000" > "$DOCKER_CC_HOME/.env"
   url=$(start_mock_subscription_server 8765)
-  cc up "$url"
+  dcc up "$url"
 
   for i in 1 2 3 4 5; do
     curl -sf http://127.0.0.1:20000/ui >/dev/null 2>&1 && break
@@ -42,7 +42,7 @@ teardown() { stop_mock_subscription_server; cd "$DOCKER_CC_HOME" && docker compo
   ! (echo > /dev/tcp/127.0.0.1/19090) 2>/dev/null   # 默认端口不再被占
 }
 
-@test "宿主已占 19090 时，cc up 应失败（端口冲突）" {
+@test "宿主已占 19090 时，dcc up 应失败（端口冲突）" {
   python3 -m http.server 19090 >/dev/null 2>&1 &
   blocker=$!
   trap "kill $blocker 2>/dev/null || true" RETURN
@@ -51,6 +51,6 @@ teardown() { stop_mock_subscription_server; cd "$DOCKER_CC_HOME" && docker compo
   export COMPOSE_FILE="docker-compose.yml:docker-compose.test.yml"
 
   url=$(start_mock_subscription_server 8766)
-  run cc up "$url"
+  run dcc up "$url"
   [ "$status" -ne 0 ]   # docker compose 应报端口冲突
 }

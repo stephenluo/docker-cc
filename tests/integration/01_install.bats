@@ -16,15 +16,15 @@ setup() {
   [ -d "$HOME/.docker-cc/providers" ]
   [ -f "$HOME/.docker-cc/providers/anthropic.json" ]
   # --skip-link 时不应建 symlink
-  [ ! -L "$BATS_TEST_TMPDIR/local/bin/cc" ]
+  [ ! -L "$BATS_TEST_TMPDIR/local/bin/dcc" ]
 }
 
 @test "install.sh --prefix 模式建 symlink 到指定目录" {
   cd "$PROJECT_ROOT"
   run ./install.sh --skip-build --prefix="$BATS_TEST_TMPDIR/local"
   [ "$status" -eq 0 ]
-  [ -L "$BATS_TEST_TMPDIR/local/bin/cc" ]
-  [ -L "$BATS_TEST_TMPDIR/local/bin/cc-use" ]
+  [ -L "$BATS_TEST_TMPDIR/local/bin/dcc" ]
+  [ -L "$BATS_TEST_TMPDIR/local/bin/dcc-use" ]
 }
 
 @test "install.sh --no-cn-mirror 在 .env 写入空加速变量" {

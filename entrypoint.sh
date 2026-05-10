@@ -18,15 +18,15 @@ case "${1:-}" in
     exec mihomo -d /etc/mihomo
     ;;
   *)
-    # —— cc 服务模式 ——
+    # —— dcc 服务模式 ——
     # 等 mihomo controller 起来即可（轻量、无外网依赖）
     # 不依赖外网联通性测试，避免代理节点慢/坏时无谓卡 15 秒
     for i in $(seq 1 15); do
       curl -s -o /dev/null -m 1 --noproxy '*' http://mihomo:9090 && break
       sleep 1
     done
-    # 应用 cc-use 默认供应商（如果设置了 CC_PROVIDER）
-    [ -n "${CC_PROVIDER:-}" ] && cc-use "$CC_PROVIDER" || true
+    # 应用 dcc-use 默认供应商（如果设置了 DCC_PROVIDER）
+    [ -n "${DCC_PROVIDER:-}" ] && dcc-use "$DCC_PROVIDER" || true
     exec "$@"
     ;;
 esac

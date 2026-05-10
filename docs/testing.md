@@ -39,14 +39,14 @@ curl -fsSL "https://github.com/hadolint/hadolint/releases/latest/download/hadoli
 docker-cc/
 ├── tests/
 │   ├── unit/
-│   │   ├── cc-use_add.bats
-│   │   ├── cc-use_switch.bats
-│   │   ├── cc-use_show.bats
-│   │   ├── cc-use_current.bats
-│   │   ├── cc-use_remove.bats
-│   │   ├── cc-use_list.bats
-│   │   ├── cc_up.bats
-│   │   └── cc_upgrade.bats
+│   │   ├── dcc-use_add.bats
+│   │   ├── dcc-use_switch.bats
+│   │   ├── dcc-use_show.bats
+│   │   ├── dcc-use_current.bats
+│   │   ├── dcc-use_remove.bats
+│   │   ├── dcc-use_list.bats
+│   │   ├── dcc_up.bats
+│   │   └── dcc_upgrade.bats
 │   ├── integration/
 │   │   ├── 01_install.bats
 │   │   ├── 02_first_run.bats
@@ -76,8 +76,8 @@ bats 测试**不能污染用户真实的 `~/.docker-cc/`**。每个测试用 BAT
 |---|---|---|
 | 供应商目录 | `PROVIDERS_DIR=$BATS_TEST_TMPDIR/providers` | 同左 |
 | settings.json | `CLAUDE_SETTINGS=$BATS_TEST_TMPDIR/settings.json` | 同左 |
-| compose 工作目录（cc 脚本） | `DOCKER_CC_HOME=$BATS_TEST_TMPDIR/repo` | 同左 + 复制真实 docker-compose.yml 进去 |
-| PATH | `PATH=$PROJECT_ROOT/bin:$PATH`（让测试调用项目内 cc / cc-use） | 同左 |
+| compose 工作目录（dcc 脚本） | `DOCKER_CC_HOME=$BATS_TEST_TMPDIR/repo` | 同左 + 复制真实 docker-compose.yml 进去 |
+| PATH | `PATH=$PROJECT_ROOT/bin:$PATH`（让测试调用项目内 dcc / dcc-use） | 同左 |
 | HOME | 单元测试不需要改 HOME | 集成测试**必须** `export HOME=$BATS_TEST_TMPDIR`：docker compose 读 `${HOME}/.docker-cc/...` 做卷挂载，不隔离会污染真实环境 |
 
 `BATS_TEST_TMPDIR` 由 bats 自动创建并在测试结束时清理，无需 teardown。
@@ -91,7 +91,7 @@ bats 测试**不能污染用户真实的 `~/.docker-cc/`**。每个测试用 BAT
 PROJECT_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
 export PROJECT_ROOT
 
-# 让测试中调用 cc / cc-use 时找到项目内的脚本而不是已安装的版本
+# 让测试中调用 dcc / dcc-use 时找到项目内的脚本而不是已安装的版本
 export PATH="$PROJECT_ROOT/bin:$PATH"
 
 # 单元测试：每个 test 独立 PROVIDERS_DIR / SETTINGS
@@ -102,7 +102,7 @@ isolate_unit_env() {
   echo '{}' > "$CLAUDE_SETTINGS"
 }
 
-# 集成测试：完整重定向 cc 脚本的 compose 目录
+# 集成测试：完整重定向 dcc 脚本的 compose 目录
 isolate_integration_env() {
   isolate_unit_env
   export DOCKER_CC_HOME="$BATS_TEST_TMPDIR/repo"
@@ -138,7 +138,7 @@ stop_mock_subscription_server() {
 
 ```bash
 # shell 脚本
-shellcheck bin/cc bin/cc-use entrypoint.sh install.sh uninstall.sh
+shellcheck bin/dcc bin/dcc-use entrypoint.sh install.sh uninstall.sh
 
 # Dockerfile
 hadolint Dockerfile
@@ -156,9 +156,9 @@ yamllint -d relaxed docker-compose.yml
 
 ## 3. 单元测试（bats）
 
-### 3.1 cc-use add
+### 3.1 dcc-use add
 
-`tests/unit/cc-use_add.bats`：
+`tests/unit/dcc-use_add.bats`：
 
 ```bash
 #!/usr/bin/env bats
@@ -167,7 +167,7 @@ load ../fixtures/helpers
 setup() { isolate_unit_env; }
 
 @test "add: api-key 模式生成完整 JSON" {
-  run cc-use add foo \
+  run dcc-use add foo \
     --api-key=sk-test \
     --base-url=https://api.example.com \
     --model=foo-pro \
@@ -185,7 +185,7 @@ setup() { isolate_unit_env; }
 }
 
 @test "add: --mode=oauth 仅写 _mode 字段" {
-  run cc-use add my-account --mode=oauth
+  run dcc-use add my-account --mode=oauth
   [ "$status" -eq 0 ]
   run jq -r '._mode' "$PROVIDERS_DIR/my-account.json"
   [ "$output" = "oauth" ]
@@ -194,7 +194,7 @@ setup() { isolate_unit_env; }
 }
 
 @test "add: --key-name=ANTHROPIC_API_KEY 写到正确字段" {
-  run cc-use add bar --api-key=K --base-url=U --key-name=ANTHROPIC_API_KEY
+  run dcc-use add bar --api-key=K --base-url=U --key-name=ANTHROPIC_API_KEY
   [ "$status" -eq 0 ]
   run jq -r '.ANTHROPIC_API_KEY' "$PROVIDERS_DIR/bar.json"
   [ "$output" = "K" ]
@@ -203,18 +203,18 @@ setup() { isolate_unit_env; }
 }
 
 @test "add: 未知参数报错" {
-  run cc-use add foo --invalid=x
+  run dcc-use add foo --invalid=x
   [ "$status" -ne 0 ]
   [[ "$output" =~ "未知参数" ]]
 }
 ```
 
-### 3.2 cc-use switch
+### 3.2 dcc-use switch
 
 ```bash
 @test "switch: api-key 模式把字段写入 settings.env" {
   echo '{"ANTHROPIC_AUTH_TOKEN":"K","ANTHROPIC_BASE_URL":"U"}' > "$PROVIDERS_DIR/foo.json"
-  run cc-use foo
+  run dcc-use foo
   [ "$status" -eq 0 ]
   run jq -r '.env.ANTHROPIC_AUTH_TOKEN' "$CLAUDE_SETTINGS"
   [ "$output" = "K" ]
@@ -222,16 +222,16 @@ setup() { isolate_unit_env; }
 
 @test "switch: oauth 模式清空 env" {
   echo '{"ANTHROPIC_AUTH_TOKEN":"K"}' > "$PROVIDERS_DIR/foo.json"
-  cc-use foo
+  dcc-use foo
   echo '{"_mode":"oauth"}' > "$PROVIDERS_DIR/oa.json"
-  run cc-use oa
+  run dcc-use oa
   [ "$status" -eq 0 ]
   run jq '.env' "$CLAUDE_SETTINGS"
   [ "$output" = "{}" ]
 }
 
 @test "switch: 不存在的供应商报错" {
-  run cc-use ghost
+  run dcc-use ghost
   [ "$status" -ne 0 ]
   [[ "$output" =~ "找不到供应商" ]]
 }
@@ -239,19 +239,19 @@ setup() { isolate_unit_env; }
 @test "switch: 下划线开头字段不写入 env" {
   echo '{"_mode":"api-key","_comment":"x","ANTHROPIC_AUTH_TOKEN":"K","ANTHROPIC_BASE_URL":"U"}' \
     > "$PROVIDERS_DIR/foo.json"
-  cc-use foo
+  dcc-use foo
   run jq 'has("_mode")' <(jq '.env' "$CLAUDE_SETTINGS")
   [ "$output" = "false" ]
 }
 ```
 
-### 3.3 cc-use show 脱敏
+### 3.3 dcc-use show 脱敏
 
 ```bash
 @test "show: API Key 脱敏（不含完整值）" {
   echo '{"ANTHROPIC_AUTH_TOKEN":"sk-ant-secret-12345","ANTHROPIC_BASE_URL":"U"}' \
     > "$PROVIDERS_DIR/foo.json"
-  run cc-use show foo
+  run dcc-use show foo
   [ "$status" -eq 0 ]
   ! [[ "$output" =~ "sk-ant-secret-12345" ]]      # 完整 token 不应出现
 }
@@ -264,40 +264,40 @@ setup() { isolate_unit_env; }
   echo '{"ANTHROPIC_AUTH_TOKEN":"K","ANTHROPIC_BASE_URL":"U1"}' > "$PROVIDERS_DIR/foo.json"
   echo '{"ANTHROPIC_AUTH_TOKEN":"K","ANTHROPIC_BASE_URL":"U2"}' > "$PROVIDERS_DIR/bar.json"
   echo '{"env":{"ANTHROPIC_AUTH_TOKEN":"K","ANTHROPIC_BASE_URL":"U2"}}' > "$CLAUDE_SETTINGS"
-  run cc-use current
+  run dcc-use current
   [ "$output" = "bar" ]
 }
 
 @test "current: env 为空 + 有 oauth 模式供应商 → 返回 oauth 供应商名" {
   echo '{"_mode":"oauth"}' > "$PROVIDERS_DIR/oa.json"
   echo '{"env":{}}' > "$CLAUDE_SETTINGS"
-  run cc-use current
+  run dcc-use current
   [ "$output" = "oa" ]
 }
 ```
 
-### 3.5 cc up（含 URL 特殊字符回归）
+### 3.5 dcc up（含 URL 特殊字符回归）
 
 ```bash
 setup() { isolate_integration_env; }   # 注意：需要 DOCKER_CC_HOME 隔离，不是 unit
 
-@test "cc up: URL 含 & 不会破坏 .env（回归 #19 #20 URL 特殊字符）" {
-  # cc 脚本会调 docker compose up；mock 不到真镜像就 exit 非零，但 .env 已写入
-  cc up "https://test.com/sub?token=x&format=clash" 2>/dev/null || true
+@test "dcc up: URL 含 & 不会破坏 .env（回归 #19 #20 URL 特殊字符）" {
+  # dcc 脚本会调 docker compose up；mock 不到真镜像就 exit 非零，但 .env 已写入
+  dcc up "https://test.com/sub?token=x&format=clash" 2>/dev/null || true
   run grep '^CLASH_SUB_URL=' "$DOCKER_CC_HOME/.env"
   [[ "$output" == *'?token=x&format=clash'* ]]
 }
 
-@test "cc up: URL 在 .env 中带双引号（防御 shell 元字符）" {
-  cc up "https://test.com/sub?a=1&b=2" 2>/dev/null || true
+@test "dcc up: URL 在 .env 中带双引号（防御 shell 元字符）" {
+  dcc up "https://test.com/sub?a=1&b=2" 2>/dev/null || true
   run grep '^CLASH_SUB_URL=' "$DOCKER_CC_HOME/.env"
   # 形如 CLASH_SUB_URL="https://..."
   [[ "$output" == *'CLASH_SUB_URL="'* ]]
 }
 
-@test "cc up: 二次调用换 URL 会覆盖（不重复）" {
-  cc up "https://a.com/sub" 2>/dev/null || true
-  cc up "https://b.com/sub" 2>/dev/null || true
+@test "dcc up: 二次调用换 URL 会覆盖（不重复）" {
+  dcc up "https://a.com/sub" 2>/dev/null || true
+  dcc up "https://b.com/sub" 2>/dev/null || true
   run grep -c '^CLASH_SUB_URL=' "$DOCKER_CC_HOME/.env"
   [ "$output" = "1" ]
   run grep '^CLASH_SUB_URL=' "$DOCKER_CC_HOME/.env"
@@ -346,15 +346,15 @@ setup() {
   [ -f "$HOME/.docker-cc/repo/Dockerfile" ]
   [ -d "$HOME/.docker-cc/providers" ]
   # --skip-link 时不应建 symlink
-  [ ! -L "$BATS_TEST_TMPDIR/local/bin/cc" ]
+  [ ! -L "$BATS_TEST_TMPDIR/local/bin/dcc" ]
 }
 
 @test "install.sh --prefix 模式建 symlink 到指定目录" {
   cd "$PROJECT_ROOT"
   run ./install.sh --skip-build --prefix="$BATS_TEST_TMPDIR/local"
   [ "$status" -eq 0 ]
-  [ -L "$BATS_TEST_TMPDIR/local/bin/cc" ]
-  [ -L "$BATS_TEST_TMPDIR/local/bin/cc-use" ]
+  [ -L "$BATS_TEST_TMPDIR/local/bin/dcc" ]
+  [ -L "$BATS_TEST_TMPDIR/local/bin/dcc-use" ]
 }
 ```
 
@@ -365,7 +365,7 @@ setup() {
 load ../fixtures/helpers
 setup() { isolate_integration_env; }
 
-@test "在 /tmp/X 目录敲 cc，容器内 /workspace 是 /tmp/X" {
+@test "在 /tmp/X 目录敲 dcc，容器内 /workspace 是 /tmp/X" {
   d="$BATS_TEST_TMPDIR/some-project"
   mkdir -p "$d"
   echo "marker-content" > "$d/MARKER"
@@ -381,12 +381,12 @@ setup() { isolate_integration_env; }
   [ "$output" = "marker-content" ]
 }
 
-@test "cc 脚本 cd 后仍能挂载用户原始 PWD（HOST_PWD 机制）" {
+@test "dcc 脚本 cd 后仍能挂载用户原始 PWD（HOST_PWD 机制）" {
   d="$BATS_TEST_TMPDIR/some-project"
   mkdir -p "$d"
   echo "ok-from-host-pwd" > "$d/MARKER"
   cd "$d"
-  # 模拟 cc 脚本行为：保存 HOST_PWD 然后 cd 到 compose 目录
+  # 模拟 dcc 脚本行为：保存 HOST_PWD 然后 cd 到 compose 目录
   HOST_PWD="$d" docker compose -f "$DOCKER_CC_HOME/docker-compose.yml" \
     run --rm --no-deps --entrypoint cat cc /workspace/MARKER
   # 期望输出内容来自 $d/MARKER，证明 HOST_PWD 机制有效
@@ -406,17 +406,17 @@ services:
 ```
 
 ```bash
-@test "首次 cc up <url> 不会卡死在 HTTP_PROXY 回环" {
+@test "首次 dcc up <url> 不会卡死在 HTTP_PROXY 回环" {
   isolate_integration_env
   cp "$PROJECT_ROOT/tests/fixtures/docker-compose.test.yml" "$DOCKER_CC_HOME/"
-  # 让 cc 脚本同时加载 base + override
+  # 让 dcc 脚本同时加载 base + override
   export COMPOSE_FILE="docker-compose.yml:docker-compose.test.yml"
 
   url=$(start_mock_subscription_server 8765)
   trap stop_mock_subscription_server EXIT
 
   # 30s 超时：HTTP_PROXY 回环 bug 复现时会无限等待
-  timeout 30 cc up "$url"
+  timeout 30 dcc up "$url"
   [ "$?" -eq 0 ]
 
   run docker compose -f "$DOCKER_CC_HOME/docker-compose.yml" \
@@ -426,7 +426,7 @@ services:
 }
 ```
 
-### 4.5 端到端：升级不丢配置（回归 cc upgrade）
+### 4.5 端到端：升级不丢配置（回归 dcc upgrade）
 
 ```bash
 load ../fixtures/helpers
@@ -437,12 +437,12 @@ setup() {
   mkdir -p "$HOME/.docker-cc/claude" "$HOME/.docker-cc/providers"
 }
 
-@test "cc upgrade 后 settings.json 和 providers 仍存在（不污染真实环境）" {
-  cc-use add foo --api-key=K --base-url=U
-  cc-use foo
+@test "dcc upgrade 后 settings.json 和 providers 仍存在（不污染真实环境）" {
+  dcc-use add foo --api-key=K --base-url=U
+  dcc-use foo
   before=$(jq -r '.env.ANTHROPIC_AUTH_TOKEN' "$CLAUDE_SETTINGS")
   [ "$before" = "K" ]
-  cc upgrade
+  dcc upgrade
   after=$(jq -r '.env.ANTHROPIC_AUTH_TOKEN' "$CLAUDE_SETTINGS")
   [ "$after" = "K" ]
   [ -f "$PROVIDERS_DIR/foo.json" ]
@@ -456,11 +456,11 @@ setup() {
 ```bash
 load ../fixtures/helpers
 setup() { isolate_integration_env; }
-teardown() { stop_mock_subscription_server; cc down 2>/dev/null || true; }
+teardown() { stop_mock_subscription_server; dcc down 2>/dev/null || true; }
 
 @test "默认端口：19090（不与宿主 Clash Verge 的 9090 冲突）" {
   url=$(start_mock_subscription_server)
-  cc up "$url"
+  dcc up "$url"
   # 等 mihomo 起来
   for i in 1 2 3 4 5; do curl -sf http://127.0.0.1:19090/ui && break; sleep 1; done
   run curl -sf -o /dev/null -w '%{http_code}' http://127.0.0.1:19090/ui
@@ -472,19 +472,19 @@ teardown() { stop_mock_subscription_server; cc down 2>/dev/null || true; }
 @test "UI_PORT=20000 覆盖生效" {
   echo "UI_PORT=20000" > "$DOCKER_CC_HOME/.env"
   url=$(start_mock_subscription_server)
-  cc up "$url"
+  dcc up "$url"
   for i in 1 2 3 4 5; do curl -sf http://127.0.0.1:20000/ui && break; sleep 1; done
   run curl -sf -o /dev/null -w '%{http_code}' http://127.0.0.1:20000/ui
   [ "$output" = "200" ]
   ! (echo > /dev/tcp/127.0.0.1/19090) 2>/dev/null   # 默认端口不再被占
 }
 
-@test "宿主已占 19090 时，cc up 应失败并提示用户改 UI_PORT" {
+@test "宿主已占 19090 时，dcc up 应失败并提示用户改 UI_PORT" {
   python3 -m http.server 19090 >/dev/null 2>&1 &
   blocker=$!
   trap "kill $blocker" RETURN
   url=$(start_mock_subscription_server 8766)
-  run cc up "$url"
+  run dcc up "$url"
   [ "$status" -ne 0 ]   # docker compose 应报端口冲突
 }
 ```
@@ -497,30 +497,30 @@ teardown() { stop_mock_subscription_server; cc down 2>/dev/null || true; }
 
 | # | 修复点 | 测试位置 | 优先级 |
 |---|---|---|---|
-| 1 | 容器/宿主路径不一致 | `unit/cc-use_*.bats`（用 PROVIDERS_DIR override 验证） | P1 |
+| 1 | 容器/宿主路径不一致 | `unit/dddcc-use_*.bats`（用 PROVIDERS_DIR override 验证） | P1 |
 | 2 | PWD 污染 | `integration/05_pwd_isolation.bats` | P1 |
-| 3 | CC_PROVIDER / HOST_PWD 透传 | `integration/05_pwd_isolation.bats` 副产物 | P2 |
+| 3 | DCC_PROVIDER / HOST_PWD 透传 | `integration/05_pwd_isolation.bats` 副产物 | P2 |
 | 4 | yq 缺失 | docker build 即验证（步骤 1） | P1 |
-| 5 | anthropic.json 字段不全 | `unit/cc-use_add.bats`（add 后 jq 字段） | P2 |
+| 5 | anthropic.json 字段不全 | `unit/dcc-use_add.bats`（add 后 jq 字段） | P2 |
 | 6 | 国内网络优化 | CI 中 build 默认值通过即可；切 `--no-cn-mirror` 单独 build 一次 | P3 |
-| 7 | providers 容器内只读 | 跑 `docker compose run cc cc-use add foo` 应失败 | P3 |
+| 7 | providers 容器内只读 | 跑 `docker compose run cc dcc-use add foo` 应失败 | P3 |
 | 8 | docker compose ps 兼容 | 改用 up -d 后无需测 | P3 |
-| 9 | sed URL 转义 | 与 #19、#20 同测，`unit/cc_up.bats` | P1 |
+| 9 | sed URL 转义 | 与 #19、#20 同测，`unit/dcc_up.bats` | P1 |
 | 10 | list 表头对齐 | 视觉，不测 | - |
-| 11 | cc 命令冲突 | 文档说明，不测 | - |
+| 11 | dcc 命令冲突 | 文档说明，不测 | - |
 | 12 | 订阅格式约束 | 文档说明，不测 | - |
 | 13 | .gitignore 包含 | 静态：grep 检查 .gitignore 含 .env | P3 |
 | 14 | HTTP_PROXY 回环 | `integration/04_first_run.bats` 不超时 | P1 |
-| 15 | REFRESH_SUB 透传 | `cc up <new-url>` 后 mihomo logs 含"拉订阅" | P2 |
+| 15 | REFRESH_SUB 透传 | `dcc up <new-url>` 后 mihomo logs 含"拉订阅" | P2 |
 | 16 | compose build context | `docker compose build` 不报错 | P1 |
-| 17 | cc panel Linux | 在 Linux runner 上 cc panel 不报错 | P3 |
-| 18 | 健康检查改 mihomo | `cc -p` 不卡 15 秒 | P2 |
-| 19 | source .env 安全提取（URL 含 `&`）| `unit/cc_up.bats` URL 特殊字符用例 | P1 |
-| 20 | URL 加引号写入 .env | `unit/cc_up.bats` 验证带双引号 | P1 |
-| 21 | /login 是会话内命令 | `cc login` 进入交互不直接执行（手动验证） | P2 |
-| 22 | OAuth 与 API key 互斥 | `unit/cc-use_switch.bats` oauth 用例 | P2 |
-| 23 | macOS Bash 3.2 多字节 `$var中文` 兼容 | `unit/cc-use_macos_bash32.bats`（断言变量值 + 中文括号完整） | P1 |
-| 24 | GH_PROXY 镜像源 probe | `unit/cc_probe.bats`（验证 .env 写入 + 幂等）；CI 中需外网 | P2 |
+| 17 | dcc panel Linux | 在 Linux runner 上 dcc panel 不报错 | P3 |
+| 18 | 健康检查改 mihomo | `dcc -p` 不卡 15 秒 | P2 |
+| 19 | source .env 安全提取（URL 含 `&`）| `unit/dcc_up.bats` URL 特殊字符用例 | P1 |
+| 20 | URL 加引号写入 .env | `unit/dcc_up.bats` 验证带双引号 | P1 |
+| 21 | /login 是会话内命令 | `dcc login` 进入交互不直接执行（手动验证） | P2 |
+| 22 | OAuth 与 API key 互斥 | `unit/dcc-use_switch.bats` oauth 用例 | P2 |
+| 23 | macOS Bash 3.2 多字节 `$var中文` 兼容 | `unit/dcc-use_macos_bash32.bats`（断言变量值 + 中文括号完整） | P1 |
+| 24 | GH_PROXY 镜像源 probe | `unit/dcc_probe.bats`（验证 .env 写入 + 幂等）；CI 中需外网 | P2 |
 | 25 | metacubexd 默认连 9090 / 端口避让冲突 | 手动验证（panel 浏览器侧），文档 + override 临时方案 | P3 |
 
 ---
@@ -542,7 +542,7 @@ teardown() { stop_mock_subscription_server; cc down 2>/dev/null || true; }
 每个组合至少跑：
 1. 步骤 1-5 的所有验证命令
 2. `bats tests/integration/*.bats`
-3. 一次完整 cc → claude 交互（手动验证 token 流）
+3. 一次完整 dcc → claude 交互（手动验证 token 流）
 
 ---
 
@@ -554,9 +554,9 @@ teardown() { stop_mock_subscription_server; cc down 2>/dev/null || true; }
 |---|---|---|
 | 镜像大小 | < 1 GB | `docker images docker-cc:latest --format '{{.Size}}'` |
 | 镜像 build 时长（国内冷构建） | < 5 min | `time docker compose build --no-cache` |
-| 首次 `cc up` 冷启动 | < 10 s | `time cc up <url>` |
-| 热启动 `cc -p "hi"`（mihomo 已 running） | < 3 s | `time cc -p "hi"` |
-| `cc-use <name>` 切换耗时 | < 100 ms | `time cc-use kimi` |
+| 首次 `dcc up` 冷启动 | < 10 s | `time dcc up <url>` |
+| 热启动 `dcc -p "hi"`（mihomo 已 running） | < 3 s | `time dcc -p "hi"` |
+| `dcc-use <name>` 切换耗时 | < 100 ms | `time dcc-use kimi` |
 
 ---
 
@@ -573,7 +573,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: sudo apt-get install -y shellcheck
-      - run: shellcheck bin/cc bin/cc-use entrypoint.sh install.sh
+      - run: shellcheck bin/dcc bin/dcc-use entrypoint.sh install.sh
       - uses: hadolint/hadolint-action@v3.1.0   # 不依赖 runner 是否装了 hadolint
         with:
           dockerfile: Dockerfile
@@ -627,7 +627,7 @@ jobs:
 
 旧版 4 周递进（粗粒度）：
 1. **第一周**：步骤 1-5 的验证命令变成 bats 集成测试 + CI
-2. **第二周**：cc-use 单元测试全覆盖
+2. **第二周**：dcc-use 单元测试全覆盖
 3. **第三周**：兼容性矩阵首次跑全
 4. **持续**：每发现一个新 bug，先写回归测试再 fix（TDD 习惯）
 
@@ -643,7 +643,7 @@ jobs:
 |---|---|---|---|
 | **M0** 镜像骨架 | TT0.1 静态检查、TT0.2 build 国内/国外、TT0.3 mihomo 启动 + 面板 200 | 静态 + 集成 | 0.5 d |
 | **M1** 核心通路 | TT1.1 `04_first_run.bats`（HTTP_PROXY 不回环）、TT1.2 anthropic.com 联通、TT1.3 手动 claude -p | 集成 + 手动 | 0.5 d |
-| **M2** 脚本层 | TT2.1 `helpers.bash`、TT2.2 cc-use_*.bats（6 个）、TT2.3 cc_up.bats、TT2.4 `05_pwd_isolation.bats`、TT2.5 `03_provider_switch` + `06_url_special_chars` | 单元 + 集成 | 1.5 d |
+| **M2** 脚本层 | TT2.1 `helpers.bash`、TT2.2 ddcc-use_*.bats（6 个）、TT2.3 dcc_up.bats、TT2.4 `05_pwd_isolation.bats`、TT2.5 `03_provider_switch` + `06_url_special_chars` | 单元 + 集成 | 1.5 d |
 | **M3** 工程化 | TT3.1 `01_install.bats`、TT3.2 `07_upgrade_persistence`、TT3.3 `08_port_conflict` | 集成 | 0.75 d |
 | **M4** CI + 发布 | TT4.1 `.github/workflows/test.yml`、TT4.2 兼容性矩阵首次跑、TT4.3 性能基线 | CI + 跨平台 | 1 d |
 
@@ -667,8 +667,8 @@ jobs:
 
 | 维度 | 目标 |
 |---|---|
-| cc-use 子命令测试覆盖 | 8/8 子命令至少 1 个 bats 用例（list / current / show / add / edit / remove / test / switch） |
-| cc 子命令测试覆盖 | 6/10 自动化 + 4/10 手动验证（login/logout/panel/shell 含 GUI/交互成分） |
+| dcc-use 子命令测试覆盖 | 8/8 子命令至少 1 个 bats 用例（list / current / show / add / edit / remove / test / switch） |
+| dcc 子命令测试覆盖 | 6/10 自动化 + 4/10 手动验证（login/logout/panel/shell 含 GUI/交互成分） |
 | §5 回归测试矩阵 | P1 全部有 bats 自动化（9 项）；P2 至少有手动复现脚本（6 项） |
 | 平台覆盖 | macOS Apple Silicon + Linux x86_64 必过；arm64 / WSL2 best-effort |
 
@@ -677,14 +677,14 @@ jobs:
 ```
 tests/
 ├── unit/
-│   ├── cc-use_add.bats
-│   ├── cc-use_switch.bats
-│   ├── cc-use_show.bats
-│   ├── cc-use_current.bats
-│   ├── cc-use_remove.bats
-│   ├── cc-use_list.bats
-│   ├── cc_up.bats
-│   └── cc_upgrade.bats
+│   ├── dcc-use_add.bats
+│   ├── dcc-use_switch.bats
+│   ├── dcc-use_show.bats
+│   ├── dcc-use_current.bats
+│   ├── dcc-use_remove.bats
+│   ├── dcc-use_list.bats
+│   ├── dcc_up.bats
+│   └── dcc_upgrade.bats
 ├── integration/
 │   ├── 01_install.bats
 │   ├── 03_provider_switch.bats
@@ -708,6 +708,6 @@ tests/
 v0.1.0 之后的测试维护原则：
 
 - **每发现一个 prod bug，先写测试再 fix**：把它加到 `tests/` 对应的 bats 文件，并在 §5 回归矩阵新增一行。
-- **每加一个 cc / cc-use 子命令**：必须先写 bats 用例（TDD），然后实现，最后通过 PR。
+- **每加一个 dcc / dcc-use 子命令**：必须先写 bats 用例（TDD），然后实现，最后通过 PR。
 - **每发一个 release**：跑全 §6 兼容性矩阵 + 收集 §7 性能基线，结果记入 `tests/compat-matrix.md` 和 `tests/perf.md`。
 - **每季度**：review CI 配置（GitHub Actions runner 镜像可能升级）、依赖版本（mihomo / yq / hadolint）。

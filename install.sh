@@ -21,7 +21,7 @@ for arg in "$@"; do
 选项：
   --no-cn-mirror      关闭国内加速（写 .env 中 APT_MIRROR/GH_PROXY/NPM_REGISTRY 空值）
   --skip-build        跳过 docker compose build（适用于镜像已存在或 CI 单独 build）
-  --skip-link         跳过把 cc/cc-use 软链到 PREFIX/bin/（不需要 sudo）
+  --skip-link         跳过把 dcc/dcc-use 软链到 PREFIX/bin/（不需要 sudo）
   --prefix=<dir>      软链放到 <dir>/bin/，默认 /usr/local
   -h, --help          显示本帮助
 EOF
@@ -53,7 +53,7 @@ mkdir -p "$DOCKER_CC_HOME"/{mihomo,claude,providers,repo}
 chmod 700 "$DOCKER_CC_HOME/providers" "$DOCKER_CC_HOME/claude"
 ok "创建 $DOCKER_CC_HOME"
 
-# 3. 复制仓库内容到 ~/.docker-cc/repo/（保证 cc upgrade 时 docker compose build 有完整 context）
+# 3. 复制仓库内容到 ~/.docker-cc/repo/（保证 dcc upgrade 时 docker compose build 有完整 context）
 echo "[3/7] 复制仓库内容到 $REPO_DIR"
 # 使用 rsync 排除 git/docs/tests/.docker-cc 等无关项
 if command -v rsync >/dev/null 2>&1; then
@@ -90,9 +90,9 @@ if [ "$NO_CN_MIRROR" = "1" ]; then
   chmod 600 "$REPO_DIR/.env"
   ok "--no-cn-mirror：已关闭国内加速源"
 elif [ "$SKIP_BUILD" != "1" ]; then
-  # 自动 probe GH_PROXY（共享脚本 bin/_cc-probe-ghproxy 维护探测逻辑 + 镜像源列表）
+  # 自动 probe GH_PROXY（共享脚本 bin/_dcc-probe-ghproxy 维护探测逻辑 + 镜像源列表）
   echo "  探测可用的 GH_PROXY 镜像源..."
-  "$PROJECT_ROOT/bin/_cc-probe-ghproxy" "$REPO_DIR/.env" \
+  "$PROJECT_ROOT/bin/_dcc-probe-ghproxy" "$REPO_DIR/.env" \
     || fail "所有 GH_PROXY 镜像源都不可达。检查网络或加 --no-cn-mirror"
 fi
 
@@ -121,8 +121,8 @@ for tpl in "$PROJECT_ROOT/providers/"*.json.example; do
   fi
 done
 
-# 7. 软链 cc / cc-use 到 PREFIX/bin/
-echo "[6/7] 安装 cc / cc-use 命令"
+# 7. 软链 dcc / dcc-use 到 PREFIX/bin/
+echo "[6/7] 安装 dcc / dcc-use 命令"
 if [ "$SKIP_LINK" = "1" ]; then
   note "(--skip-link) 跳过"
 else
@@ -138,10 +138,10 @@ else
     LN="sudo ln"
     note "$PREFIX/bin 需要 sudo 权限"
   fi
-  $LN -sf "$PROJECT_ROOT/bin/cc"     "$PREFIX/bin/cc"     || fail "软链 cc 失败"
-  $LN -sf "$PROJECT_ROOT/bin/cc-use" "$PREFIX/bin/cc-use" || fail "软链 cc-use 失败"
-  ok "$PREFIX/bin/cc → $PROJECT_ROOT/bin/cc"
-  ok "$PREFIX/bin/cc-use → $PROJECT_ROOT/bin/cc-use"
+  $LN -sf "$PROJECT_ROOT/bin/dcc"     "$PREFIX/bin/dcc"     || fail "软链 dcc 失败"
+  $LN -sf "$PROJECT_ROOT/bin/dcc-use" "$PREFIX/bin/dcc-use" || fail "软链 dcc-use 失败"
+  ok "$PREFIX/bin/dcc → $PROJECT_ROOT/bin/dcc"
+  ok "$PREFIX/bin/dcc-use → $PROJECT_ROOT/bin/dcc-use"
 fi
 
 # 8. 提示
@@ -150,19 +150,19 @@ cat <<EOF
 
 下一步：
   1. 启动并指定订阅 URL:
-     cc up "https://your-airport.com/subscription"
+     dcc up "https://your-airport.com/subscription"
 
   2. 编辑 LLM 供应商的 token（任选一个）:
-     cc-use edit anthropic
-     cc-use edit deepseek
+     dcc-use edit anthropic
+     dcc-use edit deepseek
 
   3. 切到该供应商:
-     cc-use anthropic
+     dcc-use anthropic
      # 或 OAuth 模式（Claude Pro/Max）:
-     cc login
+     dcc login
 
   4. 进入项目目录正常使用:
-     cd ~/your-project && cc
+     cd ~/your-project && dcc
 
 文档：
   docs/implementation-plan.md       # 完整设计
