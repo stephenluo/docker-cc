@@ -21,7 +21,7 @@ case "${1:-}" in
     # —— dcc 服务模式 ——
     # 等 mihomo controller 起来即可（轻量、无外网依赖）
     # 不依赖外网联通性测试，避免代理节点慢/坏时无谓卡 15 秒
-    for i in $(seq 1 15); do
+    for _ in $(seq 1 15); do
       curl -s -o /dev/null -m 1 --noproxy '*' http://mihomo:9090 && break
       sleep 1
     done

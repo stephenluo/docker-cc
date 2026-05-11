@@ -51,8 +51,10 @@ case "${1:-}" in
       REFRESH_SUB=1 exec docker compose up -d mihomo
     else
       # 之后：dcc up 直接复用 .env 里的 URL
-      [ -f .env ] && grep -q '^CLASH_SUB_URL=.' .env \
-        || { echo "首次使用请指定订阅: dcc up <subscription-url>"; exit 1; }
+      if [ ! -f .env ] || ! grep -q '^CLASH_SUB_URL=.' .env; then
+        echo "首次使用请指定订阅: dcc up <subscription-url>"
+        exit 1
+      fi
       exec docker compose up -d mihomo
     fi
     ;;
