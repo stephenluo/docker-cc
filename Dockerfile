@@ -1,6 +1,10 @@
 # syntax=docker/dockerfile:1.6
 FROM node:22-slim
 
+# 切到 bash + pipefail：让后续 RUN 里的 pipe（curl | gzip 等）任一环节失败都 exit 非 0，
+# 避免 curl 静默失败时 gzip / tar 读 0 字节"成功"导致镜像里塞了空文件
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
 ARG MIHOMO_VERSION=v1.18.10
 ARG YQ_VERSION=v4.45.1
 ARG TARGETARCH
