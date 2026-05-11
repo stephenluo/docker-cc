@@ -1,0 +1,117 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:        # 允许手动触发，用于 dry-run（推 :dev tag，不创建 release）
+
+permissions:
+  contents: write           # softprops/action-gh-release 创建 release 需要
+  packages: write           # 写 GHCR
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 读取 VERSION
+        id: ver
+        run: echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
+
+      - name: 校验 tag 与 VERSION 一致
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="${GITHUB_REF#refs/tags/v}"
+          ver="${{ steps.ver.outputs.version }}"
+          if [ "$tag" != "$ver" ]; then
+            echo "::error::tag v$tag 与 VERSION ($ver) 不一致"
+            exit 1
+          fi
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: 登录 GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 登录阿里云 ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.ALIYUN_REGISTRY }}
+          username: ${{ secrets.ALIYUN_USERNAME }}
+          password: ${{ secrets.ALIYUN_PASSWORD }}
+
+      # —— 生成 image tag：正式 release 用 :latest + :VERSION，dry-run 用 :dev + :dev-VERSION
+      # 这样 workflow_dispatch 不会污染正式 tag
+      - name: 计算 image tag
+        id: imgtag
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            echo "tag_main=latest"                              >> "$GITHUB_OUTPUT"
+            echo "tag_ver=${{ steps.ver.outputs.version }}"     >> "$GITHUB_OUTPUT"
+          else
+            echo "tag_main=dev"                                 >> "$GITHUB_OUTPUT"
+            echo "tag_ver=dev-${{ steps.ver.outputs.version }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 构建并推送（multi-arch）
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/docker-cc:${{ steps.imgtag.outputs.tag_main }}
+            ghcr.io/${{ github.repository_owner }}/docker-cc:${{ steps.imgtag.outputs.tag_ver }}
+            ${{ secrets.ALIYUN_REGISTRY }}/${{ secrets.ALIYUN_NAMESPACE }}/docker-cc:${{ steps.imgtag.outputs.tag_main }}
+            ${{ secrets.ALIYUN_REGISTRY }}/${{ secrets.ALIYUN_NAMESPACE }}/docker-cc:${{ steps.imgtag.outputs.tag_ver }}
+          build-args: |
+            APT_MIRROR=deb.debian.org
+            GH_PROXY=
+            NPM_REGISTRY=https://registry.npmjs.org
+          # scope 显式固定，让 dry-run（main ref）与正式 release（tag ref）共享 buildx cache。
+          # 默认 scope = git ref，dry-run 跑过后正式 release 仍冷启动，浪费 5-10 min arm64 仿真。
+          cache-from: type=gha,scope=buildx-shared
+          cache-to: type=gha,scope=buildx-shared,mode=max
+
+      # —— 源码 tarball（供 quick-install.sh / 离线安装用，仅正式 tag 时生成）——
+      - name: 打包 source tarball
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          VERSION="${{ steps.ver.outputs.version }}"
+          # git archive 自动排除 .gitignore 项（含 .env、node_modules）；--prefix 让解压后是 docker-cc-X.Y.Z/
+          git archive --format=tar.gz \
+            --prefix="docker-cc-${VERSION}/" \
+            -o "docker-cc-${VERSION}.tgz" HEAD
+          sha256sum "docker-cc-${VERSION}.tgz" > "docker-cc-${VERSION}.tgz.sha256"
+
+      # 抽取本次 release 的 CHANGELOG 段（避免把整个 CHANGELOG 当 release body）
+      - name: 抽取本次 release 的 CHANGELOG 段
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          VERSION="${{ steps.ver.outputs.version }}"
+          # 匹配 "## [0.2.0]" 或 "## 0.2.0" 开头，取到下一个 "## " 为止
+          awk -v ver="$VERSION" '
+            $0 ~ "^## \\[?" ver "\\]?" { flag=1; next }
+            flag && /^## / { exit }
+            flag { print }
+          ' CHANGELOG.md > release-body.md
+          # 抽不到（CHANGELOG 还没记录此版本）时给个 fallback
+          [ -s release-body.md ] || echo "See [CHANGELOG.md](CHANGELOG.md)." > release-body.md
+
+      - name: 创建/更新 GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: docker-cc ${{ steps.ver.outputs.version }}
+          body_path: release-body.md
+          files: |
+            docker-cc-${{ steps.ver.outputs.version }}.tgz
+            docker-cc-${{ steps.ver.outputs.version }}.tgz.sha256
