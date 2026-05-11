@@ -138,9 +138,11 @@ teardown() {
   mkdir -p "$BATS_TEST_TMPDIR/no-docker-path"
   ln -sf "$(command -v curl)" "$BATS_TEST_TMPDIR/no-docker-path/curl"
   ln -sf "$(command -v tar)"  "$BATS_TEST_TMPDIR/no-docker-path/tar"
-  export PATH="$BATS_TEST_TMPDIR/no-docker-path"
+  # bash 自身也得在 PATH 里，否则 run 找不到 bash → exit 127 而非 quick-install 跑出来
+  ln -sf "$(command -v bash)" "$BATS_TEST_TMPDIR/no-docker-path/bash"
   export DCC_VERSION="9.9.9"
-  run bash "$PROJECT_ROOT/scripts/quick-install.sh"
+  # PATH 局部传给 run，不污染 bats 主进程（避免影响后续 test 的 setup）
+  PATH="$BATS_TEST_TMPDIR/no-docker-path" run bash "$PROJECT_ROOT/scripts/quick-install.sh"
   [ "$status" -ne 0 ]
   [[ "$output" =~ "未找到 docker" ]]
 }

@@ -120,11 +120,12 @@ cmd_add() {
     return
   fi
 
-  # 缺参数交互式补齐
-  [ -z "$api_key" ]     && { read -rsp "API Key: " api_key; echo; }
-  [ -z "$base_url" ]    && read -rp  "Base URL: " base_url
-  [ -z "$model" ]       && read -rp  "Model (可选，主对话): " model
-  [ -z "$small_model" ] && read -rp  "Small/Fast Model (可选，后台小任务): " small_model
+  # 缺参数交互式补齐；非交互环境（bats / CI / piped stdin）下 read 立即 EOF，
+  # 加 || true 容忍，让变量保持空值后续 jq 处理
+  if [ -z "$api_key" ];     then read -rsp "API Key: " api_key                                 || true; echo; fi
+  if [ -z "$base_url" ];    then read -rp  "Base URL: " base_url                               || true; fi
+  if [ -z "$model" ];       then read -rp  "Model (可选，主对话): " model                       || true; fi
+  if [ -z "$small_model" ]; then read -rp  "Small/Fast Model (可选，后台小任务): " small_model || true; fi
 
   jq -n --arg k "$key_name" --arg t "$api_key" --arg u "$base_url" \
         --arg m "$model"   --arg sm "$small_model" \
