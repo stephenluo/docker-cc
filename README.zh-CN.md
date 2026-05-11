@@ -22,30 +22,61 @@
 
 ## 5 分钟上手
 
+### 一键安装（推荐）
+
 ```bash
-# 1. 克隆 + 安装（默认走国内加速；自动 probe 可用 GH_PROXY 镜像源）
-git clone <this-repo>.git docker-cc && cd docker-cc
-./install.sh
-# 海外用户：
-# ./install.sh --no-cn-mirror
+# 国内（默认走 ghfast 镜像加速 + 阿里云 ACR）
+curl -fsSL https://ghfast.top/raw.githubusercontent.com/stephenluo/docker-cc/main/scripts/quick-install.sh | bash
 
-# 2. 启动代理 + 指定 Clash/Mihomo 订阅 URL
-dcc up "https://your-airport.com/subscription"
+# 海外（直链 GitHub + GHCR）
+curl -fsSL https://raw.githubusercontent.com/stephenluo/docker-cc/main/scripts/quick-install.sh \
+  | DCC_GHPROXY= bash -s -- --registry=global
 
-# 3. 浏览器选个节点（默认 http://127.0.0.1:19090/ui）
-dcc panel
-
-# 4. 配置 LLM 供应商（任选一）
-dcc-use edit anthropic       # 填 sk-ant-... 用官方 API
-dcc login                    # 或：用 Claude Pro/Max 订阅（OAuth）
-
-# 5. 在任意项目目录使用
-cd ~/your-project
-dcc                          # 等同 claude，进交互
-dcc -p "explain this repo"   # 一次性
+# 指定版本
+curl -fsSL https://ghfast.top/raw.githubusercontent.com/stephenluo/docker-cc/main/scripts/quick-install.sh \
+  | DCC_VERSION=0.2.0 bash
 ```
 
+完成后：
+
+```bash
+dcc up "https://your-airport.com/subscription"
+dcc-use edit anthropic           # 填 sk-ant-... 用官方 API
+dcc                              # 在任意项目目录用，等同 claude
+```
+
+### 安全敏感：先下载再 bash
+
+```bash
+curl -fsSL https://ghfast.top/raw.githubusercontent.com/stephenluo/docker-cc/main/scripts/quick-install.sh -o quick-install.sh
+less quick-install.sh            # 审计脚本（~80 行）
+bash quick-install.sh            # 跑（可附 --registry=global 等参数）
+```
+
+### 高级安装（git clone）
+
+适用于：fork 项目、修代码、内网定制、想完整审计整套脚本。
+
+```bash
+git clone https://github.com/stephenluo/docker-cc.git docker-cc && cd docker-cc
+./install.sh                     # 选项同 quick-install.sh
+# 海外用户：./install.sh --registry=global
+# 改了 Dockerfile：./install.sh --build-local
+```
+
+### 安装选项
+
+| 选项 | 作用 |
+|---|---|
+| `--registry=auto`（默认） | 探测国内/海外网络选 ACR 或 GHCR |
+| `--registry=cn` / `--registry=global` | 强制阿里云 ACR / GHCR |
+| `--registry=ghcr.io/myorg` | 自定义 registry 前缀（fork / 企业内网） |
+| `--build-local` | 跳过 pull，本地构建（脱机 / 改了 Dockerfile） |
+| `--no-cn-mirror` | 关闭国内 apt / npm / GH 加速（fallback build 时生效） |
+
 > **macOS 用户**：首次跑 `dcc` 撞 `cc` 缓存？跑 `hash -r` 清 zsh 命令缓存。命令故意命名为 `dcc` 来从源头避开和 C 编译器 `cc` 的冲突。
+>
+> **装完后**：工作目录（curl|bash 的 /tmp/ 临时目录或 git clone 出的本地副本）可以直接 `rm -rf`，`dcc` / `dcc-use` 命令通过 `~/.docker-cc/repo/bin/` 的软链继续工作。
 
 ---
 
@@ -65,8 +96,9 @@ dcc -p "explain this repo"   # 一次性
 | `dcc shell` | 进容器调试（bash） |
 | `dcc login` / `dcc logout` | Claude 账号 OAuth 流程 |
 | `dcc refresh` | 重拉订阅（不改 URL） |
-| `dcc upgrade` | 升级镜像内 Claude Code（rebuild；配置/凭据不丢） |
-| `dcc probe` | 重新探测 GH_PROXY 备用源（`upgrade` 失败时救援） |
+| `dcc upgrade` | 升级镜像（默认 `docker compose pull`；配置/凭据不丢） |
+| `dcc upgrade --build` | 升级镜像（本地 rebuild；修了 Dockerfile / registry 拉不动时用） |
+| `dcc probe` | 重新探测 GH_PROXY 备用源（`upgrade --build` 失败时救援） |
 | `dcc logs [-f]` | 看 mihomo 日志 |
 
 ### `dcc-use`（LLM 供应商管理）

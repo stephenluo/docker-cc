@@ -19,3 +19,6 @@ tests/perf-history.csv
 .vscode/
 *.swp
 *~
+
+# Claude Code 本地状态
+.claude/

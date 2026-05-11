@@ -1,7 +1,9 @@
 services:
   mihomo:
-    image: docker-cc:latest
-    build:                                  # dcc upgrade 走 docker compose build
+    # install.sh 写入完整 registry 路径（如 ghcr.io/owner/docker-cc:0.2.0）；
+    # 未设置时退回本地 build 产物 docker-cc:latest，保持向后兼容
+    image: ${DCC_IMAGE:-docker-cc:latest}
+    build:                                  # dcc upgrade --build / install.sh --build-local 走本地 build
       context: .
       args:
         APT_MIRROR: ${APT_MIRROR-mirrors.tuna.tsinghua.edu.cn}
@@ -22,7 +24,7 @@ services:
     networks: [cc-net]
 
   cc:
-    image: docker-cc:latest                 # 与 mihomo 服务复用同一个镜像
+    image: ${DCC_IMAGE:-docker-cc:latest}    # 与 mihomo 服务复用同一个镜像
     profiles: ["cli"]                       # 默认不启动，仅 run 时使用
     depends_on: [mihomo]
     volumes:

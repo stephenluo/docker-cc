@@ -2,6 +2,29 @@
 
 ## [Unreleased]
 
+### Added — 分发部署方案（B+C 路线）
+- **`.github/workflows/release.yml`**：CI 双推 GHCR + 阿里云 ACR，multi-arch（amd64 + arm64）；`workflow_dispatch` dry-run 用 `:dev` tag 隔离，不污染正式 `:latest` / `:VERSION`。
+- **`scripts/quick-install.sh`**：一键 `curl | bash` 入口，默认走 ghfast 镜像 raw + release；GitHub API 探测 latest 版本；自动 sha256 校验；trap EXIT 清理 `$TMP`。
+- **GitHub Release source tarball**：`git archive` 生成 `docker-cc-<version>.tgz` 自动附加，含 `.sha256` 校验文件；CHANGELOG 段抽取作为 release body。
+- **`install.sh --registry=<auto|cn|global|<前缀>>`**：选择镜像源（默认 auto 探测 aliyun.com 决定 cn / global）。
+- **`install.sh --build-local`**：跳过 pull 直接本地构建（脱机 / 改 Dockerfile）。
+- **`dcc upgrade --build`**：保留旧版本地 rebuild 行为（registry 拉不动时的兜底）。
+- **`docs/distribution-plan.md`** + **`docs/distribution-implementation-progress.md`**：完整方案文档 + 实施进度追踪。
+- **`tests/unit/install_registry.bats` / `install_symlink.bats` / `quick_install.bats`**：覆盖 registry 选择 / 软链方向 / quick-install 端到端 mock。
+- **`tests/fixtures/fake-docker`**：mock docker 二进制，用于单元测试中拦截 `docker compose pull/build`。
+
+### Changed — 分发流程
+- **`docker-compose.yml`**：`image` 字段改为 `${DCC_IMAGE:-docker-cc:latest}`，支持 install.sh 写入完整 registry 路径；本地 build 兜底未变。
+- **`install.sh` 软链方向（破坏性兼容变更）**：`/usr/local/bin/dcc` 从指向 `$PROJECT_ROOT/bin/dcc` 改为指向 `$REPO_DIR/bin/dcc`（即 `~/.docker-cc/repo/bin/dcc`）。**老用户重跑 install.sh 后即可安全删除 git clone 目录**——`ln -sf` 无差别覆盖旧软链。
+- **`dcc upgrade`（默认行为）**：从本地 rebuild 改为 `docker compose pull`，速度从 2-5min 降至 20s-2min；想本地 build 改用 `dcc upgrade --build`。
+- **`install.sh [4/7]`**：从 "构建镜像" 改为 "获取镜像"——默认 pull，失败自动 fallback 到本地 build（fallback 前自动 probe GH_PROXY）。
+- **README / README.zh-CN**：「5 分钟上手」段重写为「一键安装 / 安全敏感先下载再 bash / 高级安装 / 安装选项」四块；首推 `curl | bash`。
+
+### Fixed
+- **`install.sh` 重跑会擦掉 `.env`**：之前 `rsync --delete` 没排除 `.env`，导致重跑时用户的 `CLASH_SUB_URL`、`GH_PROXY` 探测结果都被 `.env.example` 覆盖。已在 rsync 命令加 `--exclude='.env'`。
+
+## [0.1.2-pre-dist]（v0.1.0 ~ v0.1.2 累积，未单独发版本段）
+
 ### Added
 - 完整设计文档（[docs/implementation-plan.md](docs/implementation-plan.md)，1192 行）
 - 完整测试方案（[docs/testing.md](docs/testing.md)，710 行）

@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Mock docker for bats tests. 记录调用参数 + 按环境变量控制 exit 码。
+# 通过 PATH 前置注入：
+#   export PATH="$PROJECT_ROOT/tests/fixtures:$PATH"
+#   export FAKE_DOCKER_LOG="$BATS_TEST_TMPDIR/docker.log"
+#   export FAKE_DOCKER_PULL_EXIT=0       # 默认 pull 成功
+#   export FAKE_DOCKER_BUILD_EXIT=0      # 默认 build 成功
+
+echo "$@" >> "${FAKE_DOCKER_LOG:-/dev/null}"
+
+case "$1 $2" in
+  "compose pull")    exit "${FAKE_DOCKER_PULL_EXIT:-0}" ;;
+  "compose build")   exit "${FAKE_DOCKER_BUILD_EXIT:-0}" ;;
+  "compose version") echo "Docker Compose v2.99.0-fake"; exit 0 ;;
+  "compose config")  exit 0 ;;
+  *)                 exit 0 ;;
+esac

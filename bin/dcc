@@ -79,25 +79,38 @@ case "${1:-}" in
           # 共享脚本（与 install.sh 同源）维护探测逻辑 + 镜像源列表
           exec "$COMPOSE_DIR/bin/_dcc-probe-ghproxy" "$COMPOSE_DIR/.env" ;;
   upgrade)
+          # 升级：默认从 registry pull 新版镜像并重建容器（快、不依赖国内构建链）。
           # ⚠ 不要用 dcc update —— claude code 装在镜像层，--rm 容器内 npm 更新会被丢弃。
-          # 升级正确做法是 rebuild 镜像。
           shift
+          FORCE_BUILD=0
+          case "${1:-}" in
+            --build) FORCE_BUILD=1; shift ;;
+          esac
           case "${1:-claude}" in
             claude|all)
-              if ! docker compose build --no-cache --pull; then
-                echo ""
-                echo "build 失败。常见原因：GH_PROXY 镜像源临时挂掉。"
-                echo "请运行: dcc probe   # 重新探测可用源"
-                echo "然后再 dcc upgrade。"
-                exit 1
+              if [ "$FORCE_BUILD" = "1" ]; then
+                if ! docker compose build --no-cache --pull; then
+                  echo ""
+                  echo "build 失败。常见原因：GH_PROXY 镜像源临时挂掉。"
+                  echo "请运行: dcc probe   # 重新探测可用源"
+                  exit 1
+                fi
+              else
+                if ! docker compose pull; then
+                  echo ""
+                  echo "pull 失败。常见原因："
+                  echo "  - registry 不可达（试 dcc upgrade --build 走本地构建）"
+                  echo "  - DCC_IMAGE 配置错（检查 ~/.docker-cc/repo/.env）"
+                  exit 1
+                fi
               fi
               docker compose up -d --force-recreate mihomo
               docker compose run --rm cc claude --version
               echo "升级完成。配置和凭据未受影响（都在卷挂载目录）。" ;;
             mihomo)
-              echo "升级 mihomo 内核：修改 Dockerfile 的 ARG MIHOMO_VERSION，然后 dcc upgrade claude" ;;
+              echo "升级 mihomo 内核：修改 Dockerfile 的 ARG MIHOMO_VERSION，然后 dcc upgrade claude --build" ;;
             *)
-              echo "用法: dcc upgrade [claude|mihomo|all]"; exit 1 ;;
+              echo "用法: dcc upgrade [--build] [claude|mihomo|all]"; exit 1 ;;
           esac ;;
   update)
           echo "提示：dcc update 不会持久化（容器层 npm 更新会被丢弃）。"

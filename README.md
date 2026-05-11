@@ -22,30 +22,61 @@ The `dcc` command behaves identically to native `claude` — but runs in a conta
 
 ## Quick Start (5 minutes)
 
+### One-line install (recommended)
+
 ```bash
-# 1. Clone + install (uses China mirrors by default; auto-probes a working GH_PROXY)
-git clone <this-repo>.git docker-cc && cd docker-cc
-./install.sh
-# Outside China:
-# ./install.sh --no-cn-mirror
+# Outside China (direct GitHub + GHCR)
+curl -fsSL https://raw.githubusercontent.com/stephenluo/docker-cc/main/scripts/quick-install.sh \
+  | DCC_GHPROXY= bash -s -- --registry=global
 
-# 2. Boot the proxy with your Clash/Mihomo subscription URL
-dcc up "https://your-airport.com/subscription"
+# In China (default: ghfast mirror + Alibaba ACR)
+curl -fsSL https://ghfast.top/raw.githubusercontent.com/stephenluo/docker-cc/main/scripts/quick-install.sh | bash
 
-# 3. Pick a node in the dashboard (default: http://127.0.0.1:19090/ui)
-dcc panel
-
-# 4. Configure an LLM provider (pick one)
-dcc-use edit anthropic       # paste your sk-ant-... API key
-dcc login                    # or: use your Claude Pro/Max subscription (OAuth)
-
-# 5. Use it in any project directory
-cd ~/your-project
-dcc                          # equivalent to `claude`, opens interactive session
-dcc -p "explain this repo"   # one-shot
+# Pin a specific version
+curl -fsSL https://raw.githubusercontent.com/stephenluo/docker-cc/main/scripts/quick-install.sh \
+  | DCC_VERSION=0.2.0 DCC_GHPROXY= bash
 ```
 
+Then:
+
+```bash
+dcc up "https://your-airport.com/subscription"
+dcc-use edit anthropic           # paste your sk-ant-... API key
+dcc                              # use in any project dir, equivalent to `claude`
+```
+
+### Safety-conscious: download first, then bash
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/stephenluo/docker-cc/main/scripts/quick-install.sh -o quick-install.sh
+less quick-install.sh            # audit the script (~80 lines)
+bash quick-install.sh            # then run (any --flag passes through)
+```
+
+### Advanced install (git clone)
+
+For: forks, code edits, intranet customization, full audit of the install chain.
+
+```bash
+git clone https://github.com/stephenluo/docker-cc.git docker-cc && cd docker-cc
+./install.sh                     # same options as quick-install.sh
+# Outside China: ./install.sh --registry=global
+# Modified Dockerfile / offline: ./install.sh --build-local
+```
+
+### Install options
+
+| Option | Effect |
+|---|---|
+| `--registry=auto` (default) | Probe; if `aliyun.com` reachable use ACR, else GHCR |
+| `--registry=cn` / `--registry=global` | Force Aliyun ACR / GHCR |
+| `--registry=ghcr.io/myorg` | Custom registry prefix (fork / private) |
+| `--build-local` | Skip pull, build locally (offline / patched Dockerfile) |
+| `--no-cn-mirror` | Disable China apt/npm/GH acceleration (affects fallback build) |
+
 > **macOS users**: if `dcc` resolves to the C compiler the first time, run `hash -r` (zsh has cached the path to `/usr/bin/cc`). The command was named `dcc` from the start specifically to avoid this conflict.
+>
+> **After installation**: the working directory (curl|bash's `/tmp/` temp dir or the local git clone) can be safely `rm -rf`'d. `dcc` / `dcc-use` keep working via symlinks under `~/.docker-cc/repo/bin/`.
 
 ---
 
@@ -65,8 +96,9 @@ dcc -p "explain this repo"   # one-shot
 | `dcc shell` | Drop into the container (bash) for debugging |
 | `dcc login` / `dcc logout` | Claude account OAuth flow |
 | `dcc refresh` | Re-fetch subscription (URL unchanged) |
-| `dcc upgrade` | Upgrade Claude Code inside the image (rebuilds; configs/credentials kept) |
-| `dcc probe` | Re-probe GH_PROXY mirrors (use when `dcc upgrade` fails on bad mirror) |
+| `dcc upgrade` | Upgrade image (default: `docker compose pull`; configs/credentials kept) |
+| `dcc upgrade --build` | Upgrade by rebuilding locally (Dockerfile patched / registry unreachable) |
+| `dcc probe` | Re-probe GH_PROXY mirrors (use when `dcc upgrade --build` fails) |
 | `dcc logs [-f]` | Tail mihomo logs |
 
 ### `dcc-use` (LLM provider management)
