@@ -28,9 +28,9 @@
 | 7 | 扩 bats 测试 | C | ✅ | 5 个文件 + symlink。本地用 `docker run ubuntu:24.04 bash -c '...; bats tests/unit/'` 26/26 全绿 ✓ |
 | 8 | Matrix B + Matrix A mock 子集 | U | 🚫 | 等步骤 5-7 完成 + python 起 http server |
 | 9 | 更新 README + CHANGELOG | C | ✅ | README.md / README.zh-CN.md / CHANGELOG.md（`[Unreleased]` 段记录本次改动） |
-| 10 | 提交代码改动 + quick-install.sh 到 main | U | 🚫 | 等步骤 3, 5-7, 9 完成 |
-| 11 | bump VERSION + tag v0.2.0 + push | U | 🚫 | 触发正式 release.yml |
-| 12 | Matrix A 端到端验证 | U | 🚫 | release 发布后 |
+| 10 | 提交代码改动 + quick-install.sh 到 main | U | ✅ | commit 1dec012 + push origin/main |
+| 11 | bump VERSION + tag v0.2.0 + push | U | ✅ | run 25676758982 2:53 通过；GHCR `:latest` + `:0.2.0` multi-arch；GitHub Release v0.2.0 创建（body fallback，4 assets）|
+| 12 | Matrix A 端到端验证 | U | ✅ | A 双 registry pull 同 digest `0ccc998d...`；B `claude --version` 输出 2.1.138；C tarball 93K + sha256 通过 + 6 key files 完整 + 无 .env；D curl\|bash 升级本机 0.1.2→0.2.0 全流程跑通（含软链改向） |
 | 13 | 观察 24h | U | 🚫 | 被动 |
 
 ## 详细进度
@@ -221,6 +221,8 @@ git add .github/workflows/release.yml docker-compose.yml install.sh bin/dcc \
 | 2026-05-11 | distribution-plan.md 修订 | 标注个人版 endpoint 格式（与企业版区分），§3.1 / §3.2 / §7.1 加警告 |
 | 2026-05-11 | 步骤 4 ✅ | dry-run（commit 244f36c → workflow_dispatch run 25671132992）3:26 通过；GHCR + ACR 双 push 验证一致（同 digest `sha256:7b2aa376...`）；multi-arch + dry-run 隔离全部正确 |
 | 2026-05-11 | 步骤 7 验证 ✅ | macOS brew bats 1.12 对中文 test name 有 bug（升级后引入），改用 `docker run ubuntu:24.04` 跑 bats 1.10：26/26 全绿。修了一个 fake-docker 部署 bug（加 symlink `docker → fake-docker`） |
+| 2026-05-11 | 步骤 10 + 11 ✅ | commit 1dec012（17 文件 +2187/-61）→ push main + tag v0.2.0；run 25676758982 2:53 跑通；GHCR `:latest` + `:0.2.0` multi-arch（amd64/arm64）；GitHub Release v0.2.0 创建（body "See CHANGELOG.md."，4 assets）;dry-run 时残留的 `:dev` / `:dev-0.1.3` 仍在 GHCR / ACR，可手动清理 |
+| 2026-05-11 | 步骤 12 ✅ | Matrix A 全 4 项通过（双 registry pull 同 digest / claude 启动 / tarball 完整 / curl\|bash 端到端升级本机 0.1.2→0.2.0）。发现 ghfast.top 对 `api.github.com` 403，文档 §10.1b 已经写了 fallback（DCC_VERSION=<x.y.z> 显式跳过）+ 改用 `DCC_GHPROXY=` 直链 |
 
 ## C 已完成、U 待操作的衔接清单
 

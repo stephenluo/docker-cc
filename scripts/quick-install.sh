@@ -5,9 +5,11 @@
 #   curl -fsSL https://ghfast.top/raw.githubusercontent.com/stephenluo/docker-cc/main/scripts/quick-install.sh | bash
 #
 # 环境变量：
-#   DCC_VERSION    指定版本（默认 latest，从 GitHub API 探测）
-#   DCC_GHPROXY    GitHub 加速前缀（默认 https://ghfast.top/；置空走直链）
+#   DCC_VERSION    指定版本（默认 latest，从 api.github.com 直链探测）
+#   DCC_GHPROXY    raw / release tarball 加速前缀（默认 https://ghfast.top/；置空走直链）
+#                  注：不代理 api.github.com（多数 ghproxy 不支持 API），API 始终走直链
 #   DCC_REPO       仓库 owner/name（默认 stephenluo/docker-cc，便于 fork）
+#   DCC_API_BASE   API 基址覆盖（默认 https://api.github.com；测试 / GitHub Enterprise）
 #
 # 透传给 install.sh：剩余位置参数（如 --registry=global、--build-local 等）
 # 例：curl ... | bash -s -- --registry=global
@@ -33,14 +35,20 @@ command -v docker >/dev/null 2>&1 \
 # —— 2. 探测 latest 版本 ——
 if [ "$DCC_VERSION" = "latest" ]; then
   info "探测 latest 版本..."
-  # ghfast/ghproxy 通常也代理 api.github.com；如不代理则 DCC_GHPROXY= 走直链
-  API_URL="${DCC_GHPROXY}https://api.github.com/repos/${DCC_REPO}/releases/latest"
+  # API 调用走直链：ghfast/ghproxy 多数不代理 api.github.com（403），
+  # 但 api.github.com 在国内一般可直连访问；如真不通，提示用 DCC_VERSION 跳过。
+  # DCC_API_BASE 覆盖：bats 注入 mock / GitHub Enterprise 用户改 API 基址。
+  API_URL="${DCC_API_BASE:-https://api.github.com}/repos/${DCC_REPO}/releases/latest"
   # 不用 jq（quick-install 必须无依赖）：grep + sed 精确匹配 "tag_name": "..."
-  # 关键：sed 正则必须锁 "tag_name"，否则贪婪匹配会错抓为 "tag_name" 字符串本身
-  tag=$(curl -fsSL --max-time 10 "$API_URL" \
+  # 关键 1：sed 正则必须锁 "tag_name"，否则贪婪匹配会错抓为 "tag_name" 字符串本身
+  # 关键 2：管道末尾 || true —— set -e + pipefail 下，curl 失败会让整个 tag=$(...)
+  #         立即退出脚本，跳过下方 fail 友好提示。加 || true 让 tag 至少能成为空字符串，
+  #         让 [ -n "$tag" ] || fail 起作用，给出有 DCC_VERSION fallback 提示的报错。
+  tag=$(curl -fsSL --max-time 10 "$API_URL" 2>/dev/null \
           | grep -E '"tag_name"[[:space:]]*:' | head -1 \
-          | sed -E 's/.*"tag_name"[[:space:]]*:[[:space:]]*"v?([^"]+)".*/\1/')
-  [ -n "$tag" ] || fail "无法探测 latest 版本（API 不可达或 release 不存在；可用 DCC_VERSION=<x.y.z> 跳过探测）"
+          | sed -E 's/.*"tag_name"[[:space:]]*:[[:space:]]*"v?([^"]+)".*/\1/' \
+          || true)
+  [ -n "$tag" ] || fail "无法探测 latest 版本（api.github.com 不可达或 release 不存在；用 DCC_VERSION=<x.y.z> 跳过探测，例如 DCC_VERSION=0.2.0 bash）"
   DCC_VERSION="$tag"
 fi
 ok "目标版本：$DCC_VERSION"

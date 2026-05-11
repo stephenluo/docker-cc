@@ -591,9 +591,11 @@ git clone https://github.com/<owner>/docker-cc.git docker-cc && cd docker-cc
 # 用法：
 #   curl -fsSL https://ghfast.top/raw.githubusercontent.com/<owner>/docker-cc/main/scripts/quick-install.sh | bash
 # 环境变量：
-#   DCC_VERSION    指定版本（默认 latest）
-#   DCC_GHPROXY    GitHub 加速前缀（默认 https://ghfast.top/；置空走直链）
+#   DCC_VERSION    指定版本（默认 latest，从 api.github.com 直链探测）
+#   DCC_GHPROXY    raw / release tarball 加速前缀（默认 https://ghfast.top/；置空走直链）
+#                  注：不代理 api.github.com（多数 ghproxy 不支持 API），API 始终走直链
 #   DCC_REPO       仓库 owner/name（默认 <owner>/docker-cc，便于 fork）
+#   DCC_API_BASE   API 基址覆盖（默认 https://api.github.com；测试 / GitHub Enterprise）
 # 透传给 install.sh：剩余位置参数（如 --registry=global、--build-local 等）
 
 set -euo pipefail
@@ -617,14 +619,19 @@ command -v docker >/dev/null 2>&1 \
 # —— 2. 探测 latest 版本 ——
 if [ "$DCC_VERSION" = "latest" ]; then
   info "探测 latest 版本..."
-  # ghfast/ghproxy 通常也代理 api.github.com；如不代理则 DCC_GHPROXY= 走直链
-  API_URL="${DCC_GHPROXY}https://api.github.com/repos/${DCC_REPO}/releases/latest"
+  # API 调用走直链：实测 ghfast.top 对 api.github.com 返回 403（多数 ghproxy 镜像
+  # 只代理 raw / release / archive，不代理 API）。api.github.com 国内一般可直连。
+  # DCC_API_BASE 覆盖：bats 注入 mock / GitHub Enterprise 用户改 API 基址。
+  API_URL="${DCC_API_BASE:-https://api.github.com}/repos/${DCC_REPO}/releases/latest"
   # 不用 jq（quick-install 必须无依赖）：grep + sed 精确匹配 "tag_name": "..."
-  # 关键：sed 正则必须锁 "tag_name"，否则贪婪匹配会错抓为 "tag_name" 字符串本身
-  tag=$(curl -fsSL --max-time 10 "$API_URL" \
+  # 关键 1：sed 正则必须锁 "tag_name"，否则贪婪匹配会错抓为 "tag_name" 字符串本身
+  # 关键 2：管道末尾 || true —— set -e + pipefail 下，curl 失败会让整个 tag=$(...)
+  #         立即退出脚本，跳过下方 fail 友好提示。
+  tag=$(curl -fsSL --max-time 10 "$API_URL" 2>/dev/null \
           | grep -E '"tag_name"[[:space:]]*:' | head -1 \
-          | sed -E 's/.*"tag_name"[[:space:]]*:[[:space:]]*"v?([^"]+)".*/\1/')
-  [ -n "$tag" ] || fail "无法探测 latest 版本（API 不可达或 release 不存在；可用 DCC_VERSION=<x.y.z> 跳过探测）"
+          | sed -E 's/.*"tag_name"[[:space:]]*:[[:space:]]*"v?([^"]+)".*/\1/' \
+          || true)
+  [ -n "$tag" ] || fail "无法探测 latest 版本（api.github.com 不可达或 release 不存在；用 DCC_VERSION=<x.y.z> 跳过探测，例如 DCC_VERSION=0.2.0 bash）"
   DCC_VERSION="$tag"
 fi
 ok "目标版本：$DCC_VERSION"
@@ -1055,7 +1062,14 @@ DCC_GHPROXY=https://ghps.cc/      curl -fsSL .../quick-install.sh | bash
 DCC_GHPROXY=                       curl -fsSL .../quick-install.sh | bash    # 直链
 ```
 
-**原因 2**：raw.githubusercontent.com 也被代理挂了（quick-install.sh 自身都拉不到）。退到 git clone：
+**原因 2a**：API 探测失败（`api.github.com` 不通）。已确认 ghfast/ghproxy 类镜像**不代理** API（只代理 raw/release/archive），所以 quick-install.sh 默认 API 走直链。如直链也不通：
+
+```bash
+# 显式指定版本跳过 API 探测
+curl -fsSL .../quick-install.sh | DCC_VERSION=0.2.0 bash
+```
+
+**原因 2b**：raw.githubusercontent.com 也被代理挂了（quick-install.sh 自身都拉不到）。退到 git clone：
 
 ```bash
 # 用任意可访问 GitHub 的方式（VPN / Gitee 镜像 / 内部镜像源）拿到代码

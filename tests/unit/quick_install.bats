@@ -58,6 +58,10 @@ EOF
 
   export DCC_GHPROXY="http://127.0.0.1:${PORT}/"
   export DCC_REPO="owner/docker-cc"
+  # API 调用不经 DCC_GHPROXY（实际 ghfast 不代理 api.github.com），
+  # 测试时通过 DCC_API_BASE 注入 mock server。
+  # mock 文件已放在 $MOCK_DIR/api.github.com/repos/<DCC_REPO>/releases/latest
+  export DCC_API_BASE="http://127.0.0.1:${PORT}/api.github.com"
   # quick-install.sh 会拼接 ${DCC_GHPROXY}https://...，需要 mock server 同时响应 https URL path。
   # 简化：让 mock server 直接服务 path 是 "https/..." 的请求。
   # 在 mock dir 下软链 https:/ -> .（让 path /https://github.com/... 能命中本地相对路径）
@@ -129,9 +133,12 @@ teardown() {
   [[ "$output" =~ "tarball 下载失败" ]]
 }
 
-@test "依赖缺失时报错（mock 掉 docker）" {
-  # 把 PATH 限制到不含 docker 的目录
-  export PATH="/usr/bin:/bin"
+@test "依赖缺失时报错（精准 mock 掉 docker，保留 curl/tar）" {
+  # 构造一个 PATH 只含 curl + tar 的软链（不含 docker），覆盖 alpine/ubuntu 路径差异
+  mkdir -p "$BATS_TEST_TMPDIR/no-docker-path"
+  ln -sf "$(command -v curl)" "$BATS_TEST_TMPDIR/no-docker-path/curl"
+  ln -sf "$(command -v tar)"  "$BATS_TEST_TMPDIR/no-docker-path/tar"
+  export PATH="$BATS_TEST_TMPDIR/no-docker-path"
   export DCC_VERSION="9.9.9"
   run bash "$PROJECT_ROOT/scripts/quick-install.sh"
   [ "$status" -ne 0 ]
