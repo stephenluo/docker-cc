@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
 
+# 同一 ref 上的新 push 自动取消正在跑的旧 run，避免老 run 占资源
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   static:
     runs-on: ubuntu-latest
@@ -22,7 +27,10 @@ jobs:
       - name: Validate compose
         run: docker compose config -q
 
+  # —— 仅在 PR 跑：build 和 integration 重资源（含 npm install claude-code），
+  #    main push 不重跑（release.yml 已经在 tag 时做 multi-arch build + push）。——
   build:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -46,6 +54,7 @@ jobs:
         run: bats tests/unit/
 
   integration:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     needs: [build]
     steps:
