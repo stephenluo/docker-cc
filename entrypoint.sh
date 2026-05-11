@@ -25,8 +25,11 @@ case "${1:-}" in
       curl -s -o /dev/null -m 1 --noproxy '*' http://mihomo:9090 && break
       sleep 1
     done
-    # 应用 dcc-use 默认供应商（如果设置了 DCC_PROVIDER）
-    [ -n "${DCC_PROVIDER:-}" ] && dcc-use "$DCC_PROVIDER" || true
+    # 应用 dcc-use 默认供应商（如果设置了 DCC_PROVIDER）；
+    # dcc-use 失败也不打断 entrypoint（用户可能配错供应商名）
+    if [ -n "${DCC_PROVIDER:-}" ]; then
+      dcc-use "$DCC_PROVIDER" || true
+    fi
     exec "$@"
     ;;
 esac
