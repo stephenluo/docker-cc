@@ -1,6 +1,6 @@
 # docker-cc 分发部署方案：双推 GHCR + 阿里云 ACR + 一键安装
 
-> 目标：让用户在另一台机器上首装 docker-cc 时，**一行 `curl | bash` 命令完成**——跳过 git clone、跳过 350MB / 2-5 分钟的本地 build；国内、海外用户都得到原生速度。
+> 目标：让用户在另一台机器上首装 docker-cc 时，**一行 `curl | bash` 命令完成**——跳过 git clone、跳过 ~750MB / 5-15 分钟的本地 build；国内、海外用户都得到原生速度。
 >
 > 三件事一起做：
 > 1. **镜像分发**：CI 双推 GHCR + 阿里云 ACR，`install.sh` 默认走 pull。
@@ -869,7 +869,7 @@ cd docker-cc
 ```bash
 # 国内一行（默认 ghfast + 阿里云 ACR）
 curl -fsSL https://ghfast.top/raw.githubusercontent.com/<owner>/docker-cc/main/scripts/quick-install.sh | bash
-# 全过程：探测 latest → 拉 ~300KB tarball → 解压 → install.sh → docker pull ~350MB
+# 全过程：探测 latest → 拉 ~300KB tarball → 解压 → install.sh → docker pull ~750MB
 # 总耗时：1-3 分钟（视带宽）
 # 工作目录：装完干净，无任何残留
 ```
@@ -1027,7 +1027,7 @@ rm -rf ~/your-clones/docker-cc       # dcc 命令仍可用
 - [ ] GHCR 出现 `docker-cc:latest` 和 `docker-cc:<VERSION>`
 - [ ] 阿里云 ACR 同样出现两个 tag
 - [ ] 每个 tag 都是 multi-arch（`docker buildx imagetools inspect` 看 manifest list 含 amd64 + arm64）
-- [ ] 镜像 size 与本地 build 相近（350MB ± 20MB，差太多说明哪一层没复用）
+- [ ] 镜像 size 与本地 build 相近（~750MB ± 30MB；v0.2.2 起含 python/git/rg 等工具集，比 v0.2.0 的 590MB 多 ~160MB）
 - [ ] `docker pull <tag> && docker run --rm <tag> claude --version` 在 amd64 与 arm64 都通
 - [ ] **（tarball job）** GitHub Release 页面有 `docker-cc-<VERSION>.tgz` 和 `.tgz.sha256` 两个资产
 - [ ] **（tarball job）** 下载 tarball 解压后包含 `install.sh`、`Dockerfile`、`bin/`、`scripts/`、不含 `.env` 等 `.gitignore` 内容
@@ -1270,6 +1270,6 @@ release 完成后才能跑真正的 `curl | bash`：
 4. **release notes 自动生成**：CHANGELOG.md 段落自动同步到 GitHub Release 描述。
 5. **`dcc self-update`**：自检 latest release 版本号，引导用户重跑 quick-install.sh 或自动完成 in-place 升级（涉及 `~/.docker-cc/repo/` 同步 + image pull + 软链刷新）。
 6. **镜像 SBOM / 签名**：等项目用户量上来再做。
-7. **缩减镜像 size**：当前 350MB，大头是 node + claude-code。可探索 alpine 基底 / 移除不必要的工具（nano 等）。
+7. **缩减镜像 size**：当前 ~750MB（v0.2.2 起含 python/git/rg 等开发工具集），大头是 node + claude-code + python。可探索 alpine 基底 / 拆 base+tools 两个 image / 移除不必要的工具。
 8. **Homebrew tap（如果有 Mac 用户呼声）**：把 quick-install.sh 包成 brew formula，享受 `brew upgrade`。
 9. **Gitee 镜像（如果 ghproxy 系列全挂掉）**：用 hub-mirror-action 把 main + tags 推到 Gitee 做退路。

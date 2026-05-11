@@ -169,6 +169,22 @@ DOCKER 网络：cc-net
 
 完整设计见 [docs/implementation-plan.md](docs/implementation-plan.md)（~1200 行）。
 
+### 容器内含什么
+
+除了 `claude` 本身，镜像预装开发常用工具，让 Claude Code 的 Bash 工具、hooks 和你的脚本"开箱即用"：
+
+| 类别 | 工具 |
+|---|---|
+| Shell / 编辑器 | bash 5.2 / nano |
+| 语言 | python 3.11 + pip（容器内 PEP 668 已关闭，`pip install foo` 直接可用）|
+| 版本控制 | git 2.39 + openssh-client |
+| 搜索 / pager | ripgrep（`rg`，Claude Code Grep tool 的高性能后端）/ less |
+| 压缩 / 下载 | xz-utils / unzip / wget |
+| Debug | procps（`ps`）/ iproute2（`ip`）/ file / diffutils（`diff`）/ patch |
+| 其他 | curl / jq / ca-certificates / gettext-base（`envsubst`）/ tini |
+
+镜像约 750 MB。若要在容器内 native 编译（`pip install` 含 C 扩展、npm `node-gyp`），需自己进容器装 build-essential / gcc，或 patch Dockerfile 后跑 `dcc upgrade --build` 自构建。
+
 ---
 
 ## 国内网络优化
@@ -194,12 +210,15 @@ DOCKER 网络：cc-net
 
 | 现象 | 解决 |
 |---|---|
-| `dcc up` 报 SSL 错（curl mirror.ghproxy.com 失败） | `dcc probe` 切到备用 GH_PROXY 源 |
+| `curl \| bash` 在「探测 latest 版本」处失败（API 403 / 不可达） | api.github.com 被严格防火墙拦住？显式 pin 版本跳过探测：`... \| DCC_VERSION=0.2.0 bash`。（ghfast / ghproxy 镜像普遍不代理 api.github.com，quick-install 始终走直链调用 API。） |
+| `curl \| bash` 在 tarball 下载处失败 | 换 `DCC_GHPROXY`：`DCC_GHPROXY=https://gh-proxy.com/ curl ...`，或 `DCC_GHPROXY=` 走直链，或退到 `git clone + ./install.sh` |
+| `dcc upgrade` 报 "pull failed" | 试 `dcc upgrade --build` 走本地构建（含 GH_PROXY 探测）。常见原因：registry 临时不可达 |
+| `dcc upgrade --build` 报 SSL 错（curl mirror.ghproxy.com 失败） | `dcc probe` 切到备用 GH_PROXY 源（默认 `dcc upgrade` 走 pull，不会触发） |
 | `dcc panel` 显示 "无法连接后端" | metacubexd 浏览器端硬编码默认后端是 `127.0.0.1:9090`，但宿主把 controller 映射到了 `19090`。两选一：(a) 在 setup 表单填 `http://127.0.0.1:19090`，密钥**留空**；或 (b) 加一份 `~/.docker-cc/repo/docker-compose.override.yml` 增加 `127.0.0.1:9090:9090` 映射，让默认值零配置可用 |
 | `dcc` 命令变成 C 编译器（zsh 报 clang 错） | `hash -r` 清 zsh 命令缓存；新装 dcc 不会撞这坑 |
 | OAuth 登录后偶尔被强制重登 | claude.ai 对 IP 风控；在 mihomo 给 `claude.ai` / `api.anthropic.com` 锁定一个稳定的美国节点 |
 | 容器内 `dcc-use` 报只读错误 | providers 以 `:ro` 挂载（设计如此，避免容器破坏配置）；管理操作（`add` / `edit` / `remove`）从宿主调用 |
-| 升级 Claude Code 用 `dcc update` 报错 | 应该用 `dcc upgrade`（rebuild 镜像）；`update` 在 `--rm` 容器里改的会随容器销毁丢失 |
+| 升级 Claude Code 用 `dcc update` 报错 | 应该用 `dcc upgrade`（默认 pull；改了 Dockerfile 用 `dcc upgrade --build`）；`update` 在 `--rm` 容器里改的会随容器销毁丢失 |
 
 ---
 

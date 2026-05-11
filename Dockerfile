@@ -16,10 +16,28 @@ RUN if [ "$APT_MIRROR" != "deb.debian.org" ] && [ -n "$APT_MIRROR" ]; then \
       sed -i "s|deb.debian.org|$APT_MIRROR|g" /etc/apt/sources.list.d/*.sources 2>/dev/null || true; \
     fi
 
+# —— 系统工具 ——
+# 分组：
+#   基础      curl ca-certificates jq tini gettext-base nano
+#   Python    python3 python3-pip python3-venv（debian bookworm 默认 3.11.2）
+#   开发核心  git openssh-client ripgrep less（git over ssh / Claude Code Grep tool 后端 / pager）
+#   压缩网络  xz-utils unzip wget
+#   debug     procps iproute2 file diffutils patch
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      curl ca-certificates jq tini gettext-base \
-      nano \
+      curl ca-certificates jq tini gettext-base nano \
+      python3 python3-pip python3-venv \
+      git openssh-client ripgrep less \
+      xz-utils unzip wget \
+      procps iproute2 file diffutils patch \
     && rm -rf /var/lib/apt/lists/*
+
+# python / pip 命令别名，便于 Claude Code hooks / 用户脚本调用 `python` / `pip`
+RUN ln -sf /usr/bin/python3 /usr/local/bin/python && \
+    ln -sf /usr/bin/pip3    /usr/local/bin/pip
+
+# debian 12 默认 PEP 668 阻止 pip 全局装包；容器内是隔离环境无需此保护，
+# 写一份 /etc/pip.conf 让 `pip install foo` 直接可用（用户依然可以选 venv）
+RUN printf '[global]\nbreak-system-packages = true\n' > /etc/pip.conf
 
 # Mihomo + yq 二进制
 RUN case "$TARGETARCH" in \

@@ -169,6 +169,22 @@ HOST PORTS
 
 Full design: [docs/implementation-plan.md](docs/implementation-plan.md) (~1200 lines).
 
+### What's inside the container
+
+Beyond `claude` itself, the image ships with developer essentials so Claude Code's Bash tool, hooks, and your scripts can run out of the box:
+
+| Category | Tools |
+|---|---|
+| Shell / editor | bash 5.2 / nano |
+| Language | python 3.11 + pip (PEP 668 disabled inside the container — `pip install foo` just works) |
+| VCS | git 2.39 + openssh-client |
+| Search / pager | ripgrep (`rg`, the high-performance backend for Claude Code's Grep tool) / less |
+| Compress / fetch | xz-utils / unzip / wget |
+| Debug | procps (`ps`) / iproute2 (`ip`) / file / diffutils (`diff`) / patch |
+| Misc | curl / jq / ca-certificates / gettext-base (`envsubst`) / tini |
+
+Image size ≈ 750 MB. For native compilation inside the container (`pip install` with C extensions, npm `node-gyp`), install build-essential / gcc yourself or patch the Dockerfile and run `dcc upgrade --build`.
+
 ---
 
 ## China Network Optimization
@@ -194,7 +210,10 @@ When `mirror.ghproxy.com` is down, run `dcc probe` to switch (auto-failover to `
 
 | Symptom | Fix |
 |---|---|
-| `dcc up` fails with SSL error (curl mirror.ghproxy.com) | `dcc probe` to switch GH_PROXY mirror |
+| `curl \| bash` fails at "探测 latest 版本" (API 403 / unreachable) | api.github.com behind a strict firewall? Pin a version to skip probing: `... \| DCC_VERSION=0.2.0 bash`. (ghfast / ghproxy mirrors don't proxy api.github.com — quick-install always calls the API directly.) |
+| `curl \| bash` fails at tarball download | Switch `DCC_GHPROXY`: `DCC_GHPROXY=https://gh-proxy.com/ curl ...`, or `DCC_GHPROXY=` for direct link, or fall back to `git clone + ./install.sh` |
+| `dcc upgrade` fails with "pull failed" | Try `dcc upgrade --build` to rebuild locally (uses GH_PROXY probing). Common cause: registry temporarily unreachable |
+| `dcc upgrade --build` fails with SSL error (curl mirror.ghproxy.com) | `dcc probe` switches to another GH_PROXY mirror (default `dcc upgrade` uses pull and isn't affected) |
 | `dcc panel` shows "Cannot connect to backend" | metacubexd's hard-coded default backend is `127.0.0.1:9090`, but the host maps the controller to `19090`. Either (a) fill `http://127.0.0.1:19090` into the setup form with secret **left blank**, or (b) add a `127.0.0.1:9090:9090` mapping via `~/.docker-cc/repo/docker-compose.override.yml` so the default works zero-config |
 | `dcc` resolves to clang/C compiler | `hash -r` clears zsh's command cache. Newly-installed `dcc` should not collide |
 | OAuth occasionally forces re-login | claude.ai does IP-based account binding. Pin `claude.ai` / `api.anthropic.com` to a stable US node in mihomo rules |

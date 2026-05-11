@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-05-12
+
+### Added — 镜像内开发工具全家桶
+- **Dockerfile +14 工具**：python 3.11 + pip / git + openssh-client / ripgrep（`rg`，Claude Code Grep tool 后端）/ less / xz-utils / unzip / wget / procps（`ps`）/ iproute2（`ip`）/ file / diffutils（`diff`）/ patch。
+- **`python` / `pip` 命令别名**：软链到 python3 / pip3，便于 hooks 与用户脚本调用。
+- **`/etc/pip.conf` 关闭 PEP 668**：容器内是隔离环境，`pip install foo` 直接可用（不需要 `--break-system-packages` 或 venv）。
+- 镜像 size 从 ~590MB → ~750MB（+160MB），为换"开箱即用"的开发体验。
+
+### Fixed — quick-install.sh API 调用 + 错误处理（v0.2.1 已 main raw 生效，本 release 一并归档）
+- **API URL 改走直链**：ghfast.top 实测对 `api.github.com` 返回 403（多数 ghproxy 镜像只代理 raw / release / archive，不代理 REST API）。`quick-install.sh` 的 latest 探测改用 `https://api.github.com` 直链。
+- **`set -e + pipefail` 吃掉友好提示修复**：管道末尾加 `|| true`，让 `tag=$(curl|grep|sed)` 失败时不立即退出，走到 `[ -n "$tag" ] || fail "..."` 显示"DCC_VERSION=<x.y.z> 跳过探测"的友好引导。
+- **DCC_API_BASE 环境变量**：API 基址覆盖，bats 注入 mock server / GitHub Enterprise 用户改 API 基址。
+- **README 故障排查段补 3 条**：`curl | bash` API 探测失败、tarball 下载失败、`dcc upgrade` pull 失败的应对。
+
 ### Added — 分发部署方案（B+C 路线）
 - **`.github/workflows/release.yml`**：CI 双推 GHCR + 阿里云 ACR，multi-arch（amd64 + arm64）；`workflow_dispatch` dry-run 用 `:dev` tag 隔离，不污染正式 `:latest` / `:VERSION`。
 - **`scripts/quick-install.sh`**：一键 `curl | bash` 入口，默认走 ghfast 镜像 raw + release；GitHub API 探测 latest 版本；自动 sha256 校验；trap EXIT 清理 `$TMP`。

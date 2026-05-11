@@ -98,10 +98,19 @@ RUN if [ "$APT_MIRROR" != "deb.debian.org" ] && [ -n "$APT_MIRROR" ]; then \
       sed -i "s|deb.debian.org|$APT_MIRROR|g" /etc/apt/sources.list.d/*.sources 2>/dev/null || true; \
     fi
 
+# 系统工具：基础 + Python + 开发核心 + 压缩 + debug（v0.2.2 起 Claude Code 常用全家桶）
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      curl ca-certificates jq tini gettext-base \
-      nano \
+      curl ca-certificates jq tini gettext-base nano \
+      python3 python3-pip python3-venv \
+      git openssh-client ripgrep less \
+      xz-utils unzip wget \
+      procps iproute2 file diffutils patch \
     && rm -rf /var/lib/apt/lists/*
+
+# python / pip 别名 + 关闭 PEP 668（容器内隔离环境，`pip install foo` 直接可用）
+RUN ln -sf /usr/bin/python3 /usr/local/bin/python && \
+    ln -sf /usr/bin/pip3    /usr/local/bin/pip && \
+    printf '[global]\nbreak-system-packages = true\n' > /etc/pip.conf
 
 # Mihomo 二进制 + yq 二进制（entrypoint.sh 用 yq 改写 config.yaml 注入 external-controller / external-ui）
 RUN case "$TARGETARCH" in \
