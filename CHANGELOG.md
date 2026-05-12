@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.2.10] - 2026-05-12
+
+### Added — dcc-use 版本号 banner
+- `dcc-use -v` / `dcc-use --version` 显示版本号并退出（之前缺失，跟 `dcc -v` 不对称）
+- 状态变更操作（add / edit / remove / registry / switch）开始时打 `dcc-use v<VERSION>` banner 到 stderr，便于 audit
+- 查询/帮助操作（list / current / show / test / -h）保持 stdout 干净，不打 banner
+- 第一个用 `dcc upgrade` 自更新链路验证的 release（0.2.9 → 0.2.10 应该 image + host scripts 一次升完）
+
 ## [0.2.9] - 2026-05-12
 
 ### ⚠ 升级注意（一次性过渡期）

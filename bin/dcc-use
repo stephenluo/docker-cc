@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# dcc-use：LLM 供应商管理 + 切换。同一份脚本同时部署在宿主和容器内。
+# dcc-use：LLM 供应商管理 + 切换 + registry 切换。同一份脚本同时部署在宿主和容器内。
 # 详见 docs/implementation-plan.md §7.2
 
 set -eo pipefail
@@ -14,6 +14,22 @@ else
 fi
 mkdir -p "$PROVIDERS_DIR" "$(dirname "$SETTINGS")" 2>/dev/null || true
 [ -f "$SETTINGS" ] || echo '{}' > "$SETTINGS"
+
+# 读版本号（VERSION 文件由 install.sh 复制到 ~/.docker-cc/repo/；容器内不存在则 dev）
+DCC_USE_VERSION="$(cat "${DOCKER_CC_HOME:-$HOME/.docker-cc}/repo/VERSION" 2>/dev/null || echo dev)"
+
+# --version / -v：单独显示版本，不透传给子命令，不打 banner
+if [ "${1:-}" = "--version" ] || [ "${1:-}" = "-v" ]; then
+  echo "dcc-use v${DCC_USE_VERSION}"
+  exit 0
+fi
+
+# banner 仅在"状态变更"操作打（add / edit / remove / registry / switch），
+# 查询/帮助操作（list / current / show / test / help）保持 stdout 干净
+case "${1:-}" in
+  ""|list|current|show|test|-h|--help|help) ;;
+  *) echo "dcc-use v${DCC_USE_VERSION}" >&2 ;;
+esac
 
 # —— 工具函数 ——
 
