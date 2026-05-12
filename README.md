@@ -96,14 +96,14 @@ git clone https://github.com/stephenluo/docker-cc.git docker-cc && cd docker-cc
 | `dcc shell` | Drop into the container (bash) for debugging |
 | `dcc login` / `dcc logout` | Claude account OAuth flow |
 | `dcc refresh` | Re-fetch subscription (URL unchanged) |
-| `dcc upgrade` | Upgrade to latest release (probes `api.github.com`, rewrites VERSION + `.env`, then `docker compose pull`) |
-| `dcc upgrade --keep` | Refresh image layers but keep the currently pinned version |
+| `dcc upgrade` | Upgrade to latest release (probes `api.github.com`, rewrites VERSION + `.env`, `docker compose pull` image, then sync host `bin/` + compose from release tarball) |
+| `dcc upgrade --keep` | Refresh image layers but keep current version pin; host scripts unchanged |
 | `dcc upgrade --to=<x.y.z>` | Switch to a specific version |
 | `dcc upgrade --build` | Build locally (Dockerfile patched / registry unreachable) |
 | `dcc probe` | Re-probe GH_PROXY mirrors (use when `dcc upgrade --build` fails) |
 | `dcc logs [-f]` | Tail mihomo logs |
 
-### `dcc-use` (LLM provider management)
+### `dcc-use` (LLM provider management + registry switch)
 
 | Command | Effect |
 |---|---|
@@ -116,6 +116,10 @@ git clone https://github.com/stephenluo/docker-cc.git docker-cc && cd docker-cc
 | `dcc-use edit <name>` | Edit JSON with `$EDITOR` |
 | `dcc-use remove <name>` | Delete (with confirmation) |
 | `dcc-use test [<name>]` | Probe endpoint reachability + token validity |
+| `dcc-use registry` | Show current image registry (GHCR / Aliyun ACR / custom) |
+| `dcc-use registry cn` | Rewrite `.env`'s `DCC_IMAGE` prefix to Aliyun ACR (then run `dcc upgrade --keep` to pull from new source) |
+| `dcc-use registry global` | Same, but to GHCR |
+| `dcc-use registry <prefix>` | Same, custom registry prefix (fork / private) |
 
 ---
 

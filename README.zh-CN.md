@@ -96,14 +96,14 @@ git clone https://github.com/stephenluo/docker-cc.git docker-cc && cd docker-cc
 | `dcc shell` | 进容器调试（bash） |
 | `dcc login` / `dcc logout` | Claude 账号 OAuth 流程 |
 | `dcc refresh` | 重拉订阅（不改 URL） |
-| `dcc upgrade` | 升级到 latest release（探测 `api.github.com`，自动改 VERSION + `.env`，然后 `docker compose pull`） |
-| `dcc upgrade --keep` | 仅刷新镜像 layer，保持当前 pin 版本不变 |
+| `dcc upgrade` | 升级到 latest release（探测 `api.github.com`，改 VERSION + `.env`，`docker compose pull` 镜像，再从 release tarball 同步宿主 `bin/` + compose 文件） |
+| `dcc upgrade --keep` | 仅刷新镜像 layer，保持当前 pin 版本；宿主脚本不动 |
 | `dcc upgrade --to=<x.y.z>` | 切到指定版本 |
 | `dcc upgrade --build` | 本地 rebuild（修了 Dockerfile / registry 拉不动时用） |
 | `dcc probe` | 重新探测 GH_PROXY 备用源（`upgrade --build` 失败时救援） |
 | `dcc logs [-f]` | 看 mihomo 日志 |
 
-### `dcc-use`（LLM 供应商管理）
+### `dcc-use`（LLM 供应商管理 + 镜像源切换）
 
 | 命令 | 作用 |
 |---|---|
@@ -116,6 +116,10 @@ git clone https://github.com/stephenluo/docker-cc.git docker-cc && cd docker-cc
 | `dcc-use edit <name>` | 用 `$EDITOR` 编辑 JSON |
 | `dcc-use remove <name>` | 删除（带确认） |
 | `dcc-use test [<name>]` | 探测 endpoint 可达性 + token 有效性 |
+| `dcc-use registry` | 显示当前镜像源（GHCR / 阿里云 ACR / 自定义） |
+| `dcc-use registry cn` | 把 `.env` 的 `DCC_IMAGE` 前缀改为阿里云 ACR（之后跑 `dcc upgrade --keep` 从新源拉镜像）|
+| `dcc-use registry global` | 同上，改为 GHCR |
+| `dcc-use registry <前缀>` | 同上，自定义 registry 前缀（fork / 内网） |
 
 ---
 

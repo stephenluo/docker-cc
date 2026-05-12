@@ -169,6 +169,37 @@ case "${1:-}" in
                   echo "  - DCC_IMAGE 配置错（检查 ~/.docker-cc/repo/.env）"
                   exit 1
                 fi
+
+                # —— 真升级时同步宿主脚本（dcc / dcc-use / compose / scripts 等）——
+                # 从 release tarball 拉对应版本的 bin/* 等覆盖 $COMPOSE_DIR，避免 image
+                # 升级后宿主 dcc/dcc-use 还是旧版（如缺 dcc-use registry 等新命令）。
+                # --keep / --build / NEW_VER==CUR_VER 跳过（无变化无需拉）。
+                if [ "$TARGET_VER" != "keep" ] && [ "$NEW_VER" != "$CUR_VER" ]; then
+                  echo "  同步宿主脚本（dcc / dcc-use / compose）..." >&2
+                  GHPROXY="${DCC_GHPROXY-https://ghfast.top/}"
+                  TARBALL_URL="${GHPROXY}https://github.com/${DCC_REPO}/releases/download/v${NEW_VER}/docker-cc-${NEW_VER}.tgz"
+                  TMP_UPGRADE=$(mktemp -d)
+                  if curl -fsSL --max-time 60 "$TARBALL_URL" -o "$TMP_UPGRADE/r.tgz" 2>/dev/null \
+                     && tar xz -C "$TMP_UPGRADE" -f "$TMP_UPGRADE/r.tgz" --strip-components=1 2>/dev/null; then
+                    # 保护用户数据：不动 .env / providers / VERSION（VERSION 已由本函数改过）
+                    # 覆盖：bin/* / scripts/* / docker-compose.yml / Dockerfile / entrypoint.sh / .env.example
+                    cp "$TMP_UPGRADE/bin/"* "$COMPOSE_DIR/bin/" 2>/dev/null || true
+                    chmod +x "$COMPOSE_DIR/bin/"* 2>/dev/null || true
+                    for f in docker-compose.yml Dockerfile entrypoint.sh .env.example; do
+                      [ -f "$TMP_UPGRADE/$f" ] && cp "$TMP_UPGRADE/$f" "$COMPOSE_DIR/"
+                    done
+                    if [ -d "$TMP_UPGRADE/scripts" ]; then
+                      mkdir -p "$COMPOSE_DIR/scripts"
+                      cp "$TMP_UPGRADE/scripts/"* "$COMPOSE_DIR/scripts/" 2>/dev/null || true
+                    fi
+                    echo "  ✓ 宿主 dcc / dcc-use / compose 已同步到 $NEW_VER" >&2
+                  else
+                    echo "  ⚠ 同步 tarball 失败（${TARBALL_URL}）" >&2
+                    echo "    镜像已升到 $NEW_VER，但宿主 dcc/dcc-use 未更新" >&2
+                    echo "    手动同步: curl -fsSL https://ghfast.top/raw.githubusercontent.com/${DCC_REPO}/main/scripts/quick-install.sh | DCC_VERSION=${NEW_VER} bash -s -- --skip-link" >&2
+                  fi
+                  rm -rf "$TMP_UPGRADE"
+                fi
               fi
               docker compose up -d --force-recreate mihomo
               docker compose run --rm cc claude --version

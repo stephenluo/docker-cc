@@ -2,6 +2,71 @@
 
 ## [Unreleased]
 
+## [0.2.9] - 2026-05-12
+
+### ⚠ 升级注意（一次性过渡期）
+
+本版本起 `dcc upgrade` 会自动同步宿主 dcc / dcc-use 脚本——但这个能力本身在新版 `dcc` 里。**0.2.8 及以下版本的用户首次升级必须用 quick-install.sh**（一次过渡，之后所有版本 `dcc upgrade` 都能自更新）：
+
+```bash
+# 国内
+curl -fsSL https://ghfast.top/raw.githubusercontent.com/stephenluo/docker-cc/main/scripts/quick-install.sh \
+  | bash -s -- --skip-link
+
+# 海外
+curl -fsSL https://raw.githubusercontent.com/stephenluo/docker-cc/main/scripts/quick-install.sh \
+  | DCC_GHPROXY= bash -s -- --skip-link --registry=global
+```
+
+之后日常升级：`dcc upgrade` 一行搞定（image + host scripts 都升）。
+
+### Added — `dcc upgrade` 同步宿主脚本 + `dcc-use registry` 切换镜像源
+
+**`dcc upgrade` 顺手更新宿主 dcc / dcc-use / compose**（pull image 后自动）
+- 之前 `dcc upgrade` 只 `docker compose pull`，不动 `~/.docker-cc/repo/bin/dcc` 等宿主脚本，导致镜像新了但 host 端 `dcc-use` 等还是旧版（缺新命令）
+- 现在 pull image 成功后，自动从 release tarball 拉对应版本的 `bin/` + `docker-compose.yml` + `Dockerfile` + `entrypoint.sh` + `.env.example` + `scripts/`，覆盖 `~/.docker-cc/repo/`
+- 保护用户数据：不动 `.env` / `providers/` / `VERSION`（VERSION 已由 upgrade 自身改）
+- tarball 失败时 print warning + 提示用 quick-install.sh 兜底
+- `--keep` / `--build` 跳过此同步（无版本切换时无需拉）
+
+**`dcc-use registry` 一键切换镜像源**
+- `dcc-use registry` 显示当前 docker image registry（识别 GHCR / 阿里云 ACR / 自定义）
+- `dcc-use registry cn` / `global` / `<前缀>` 改 `~/.docker-cc/repo/.env` 的 `DCC_IMAGE` 前缀（tag 保持不变）。改完跑 `dcc upgrade --keep` 即可从新 registry 拉镜像
+- `DCC_ALIYUN_PREFIX` / `DCC_GHCR_OWNER` 环境变量覆盖默认 prefix（fork / 内网用户）
+- 11 个新 bats 测试覆盖 show / cn / global / 自定义 / 重复切 / 环境变量覆盖 / 边界
+
+### Fixed
+- bin/dcc-use cmd_registry 管道末尾加 `|| true` 兜底 `set -e + pipefail`，否则 grep 找不到 DCC_IMAGE 时让 `cur_img=$(...)` 退出码非 0，整个脚本静默退出，跳过"没找到 DCC_IMAGE"友好提示（同 quick-install.sh / dcc upgrade 已修过的 pattern）
+
+## [0.2.8] - 2026-05-12
+
+### Added — `dcc upgrade` 智能化（自动到 latest + flag 套件）
+- **`dcc upgrade`（默认）** 改为探测 `api.github.com/repos/.../releases/latest`，对比当前 VERSION，自动改 VERSION + `.env` 的 `DCC_IMAGE` tag，然后 `docker compose pull`
+- **`dcc upgrade --to=<x.y.z>`** 切到指定版本
+- **`dcc upgrade --keep`** 保持当前 pin（v0.2.0-v0.2.7 旧默认行为，仅刷新镜像 layer）
+- **`dcc upgrade --build`** 本地构建（不变）
+- pull 失败自动回退 VERSION + `.env`，给清晰提示
+- `DCC_API_BASE` 环境变量：API 基址覆盖，供 bats 注入 mock / GitHub Enterprise 用户改 API 基址
+- `DCC_REPO` 环境变量：fork 用户可在 `.env` 加 `DCC_REPO=myfork/docker-cc` 覆盖
+- `tests/bats-runner.Dockerfile`：本地 dev 加速镜像（apk add jq curl python3 预装），本地 bats 跑时间 3:52 → 4s
+- 5 个新 bats test 覆盖 `--to=` / `--keep` / DCC_API_BASE mock 探测 / API 不可达友好提示 / `--to` 空参报错
+
+### Changed — CI 流程
+- **`test.yml` build / integration job 加 `if: github.event_name == 'pull_request'`**，main push 只跑 static + unit（轻量 2-3 min）
+- **`test.yml` `concurrency.cancel-in-progress: true`**，同 ref 新 push 自动取消旧 in-progress run
+- 4 个原 dcc_upgrade.bats "默认" test 改用 `--keep`，避开 API 依赖
+
+### Fixed — shellcheck 0.9 + hadolint + bats 兼容
+- **shellcheck 0.9.0 兼容**（ubuntu 24.04 runner 升级触发，旧 0.8 不报）：
+  - `bin/dcc:54` SC2015 `[ -f .env ] && grep -q ... || { ...; exit 1; }` → if/then/else 形式
+  - `entrypoint.sh:24` SC2034 `for i in $(seq 1 15)` → `for _`（unused loop var 约定）
+  - `entrypoint.sh:29` SC2015 `[ -n "$DCC_PROVIDER" ] && dcc-use ... || true` → if/then/else
+- **hadolint DL4006**：`Dockerfile` 顶部加 `SHELL ["/bin/bash", "-o", "pipefail", "-c"]`，让 `curl | gzip` 这类 pipe 任一环节失败即 fail（之前 curl 失败时 gzip 静默读 0 字节让 RUN 假成功，镜像里塞空文件）
+- **新增 `.hadolint.yaml`** 忽略 DL3008 / DL3016（apt / npm 不 pin 是设计选择，避免镜像过时）
+- **bats unit 6 个 fail 修复**：
+  - `bin/dcc-use cmd_add` `read -rp` 在非交互（bats / CI / piped stdin）下立即 EOF，`set -e` 让 jq 写文件那步永远跑不到 → read 后加 `|| true` + if 形式（影响 dcc-use_add.bats #3 #5 + dcc-use_list.bats #10 #11 #13 测试，setup 调 dcc-use add 也挂）
+  - `quick_install.bats` test 16 `export PATH=` 污染下个 test setup → 改 `PATH=... run` 局部传递 + 把 bash 也软链进 no-docker-path（alpine PATH 限制后 bash 自身找不到）
+
 ## [0.2.2] - 2026-05-12
 
 ### Added — 镜像内开发工具全家桶
