@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.2.12] - 2026-05-12
+
+### Changed — dcc-use 所有调用都打 banner（跟 dcc 行为对齐）
+
+之前 v0.2.10 引入 dcc-use banner 时设计了"仅状态变更操作打 banner，查询不打"。实际用户预期是"跑任何 dcc-use 都看到版本号"（同 dcc 行为），改动 UX 不一致让人困惑。
+
+现在：
+- `dcc-use`（list）/ `dcc-use help` / `dcc-use current` 等查询命令也打 `dcc-use v<VERSION>` banner
+- Banner 在 stderr，`dcc-use current | grep ...` 等 pipe 仍干净
+- `dcc-use -v` / `--version` 行为不变（单行版本号 + exit）
+
+测试：`tests/unit/dcc-use_current.bats` 4 个精确匹配用例从 `[ "$output" = "..." ]` 改为 `[ "${lines[-1]}" = "..." ]`（取最后一行避开 banner）。bats 1.10 默认 `run` 合并 stderr 到 $output，所以 banner 会出现在第一行。
+
 ## [0.2.11] - 2026-05-12
 
 ### Fixed — 容器内 `.claude.json` 持久化（首次启动 welcome 反复出现的原因）

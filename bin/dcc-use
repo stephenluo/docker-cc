@@ -25,12 +25,9 @@ if [ "${1:-}" = "--version" ] || [ "${1:-}" = "-v" ]; then
   exit 0
 fi
 
-# banner 仅在"状态变更"操作打（add / edit / remove / registry / switch），
-# 查询/帮助操作（list / current / show / test / help）保持 stdout 干净
-case "${1:-}" in
-  ""|list|current|show|test|-h|--help|help) ;;
-  *) echo "dcc-use v${DCC_USE_VERSION}" >&2 ;;
-esac
+# 所有调用都打一行 banner（同 dcc 行为，便于 audit）。
+# 输出到 stderr 不污染 stdout 管道（`dcc-use current | grep ...` 不受影响）。
+echo "dcc-use v${DCC_USE_VERSION}" >&2
 
 # —— 工具函数 ——
 
