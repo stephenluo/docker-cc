@@ -29,9 +29,12 @@ services:
     depends_on: [mihomo]
     volumes:
       - ${HOST_PWD:-${PWD}}:/workspace       # dcc 脚本设置 HOST_PWD=用户原始工作目录
-      - ${HOME}/.docker-cc/claude:/root/.claude
-      - ${HOME}/.docker-cc/providers:/root/.cc-providers:ro
+      # v0.2.11 起：容器内 $HOME=/data，所有 dotfile（.claude.json / .claude/ /
+      # .npmrc / ...）都在挂载点持久化。代替老的 ../claude:/root/.claude 单目录挂载。
+      - ${HOME}/.docker-cc/cc-home:/data
+      - ${HOME}/.docker-cc/providers:/data/.cc-providers:ro
     environment:
+      - HOME=/data                            # 让 claude / npm / shell 都用挂载目录作 $HOME
       - DCC_PROVIDER=${DCC_PROVIDER:-}        # 可选：entrypoint 启动时 dcc-use 切到该供应商
     networks: [cc-net]
     stdin_open: true

@@ -152,10 +152,10 @@ HOST
 ├─ dcc, dcc-use                  (in PATH via symlink)
 │   ├─ dcc up      → docker compose up
 │   ├─ dcc <args>  → docker compose run --rm cc claude <args>
-│   └─ dcc-use     → edits ~/.docker-cc/claude/settings.json
+│   └─ dcc-use     → edits ~/.docker-cc/cc-home/.claude/settings.json
 └─ ~/.docker-cc/
     ├─ mihomo/      config.yaml + cache.db
-    ├─ claude/      settings.json + .credentials.json (OAuth)
+    ├─ cc-home/     container $HOME (.claude.json + .claude/{settings,creds} + .npmrc + ...)
     └─ providers/   *.json (chmod 600)
                                           │
                                           │ volume mounts

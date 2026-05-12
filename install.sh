@@ -62,9 +62,22 @@ ok "docker / docker compose 可用"
 
 # 2. 创建目录树
 echo "[2/7] 创建 ~/.docker-cc/ 目录树"
-mkdir -p "$DOCKER_CC_HOME"/{mihomo,claude,providers,repo}
-# 含敏感数据的目录（providers 含 API key、claude 含 OAuth 凭据）权限 700
-chmod 700 "$DOCKER_CC_HOME/providers" "$DOCKER_CC_HOME/claude"
+# v0.2.11 起：cc-home 取代 claude——容器内 $HOME=/data 挂载到 cc-home/，所有
+# dotfile（.claude.json / .claude/ / .npmrc 等）持久化在挂载点
+mkdir -p "$DOCKER_CC_HOME"/{mihomo,providers,cc-home,repo}
+# 含敏感数据的目录权限 700
+chmod 700 "$DOCKER_CC_HOME/providers" "$DOCKER_CC_HOME/cc-home"
+
+# v0.2.10→0.2.11 迁移：把旧 claude/ 内容（含 OAuth 凭据 / settings.json /
+# backups/）整体移到 cc-home/.claude/
+if [ -d "$DOCKER_CC_HOME/claude" ] && [ ! -d "$DOCKER_CC_HOME/cc-home/.claude" ]; then
+  mkdir -p "$DOCKER_CC_HOME/cc-home/.claude"
+  cp -a "$DOCKER_CC_HOME/claude/." "$DOCKER_CC_HOME/cc-home/.claude/"
+  chmod 700 "$DOCKER_CC_HOME/cc-home/.claude"
+  ok "已迁移 ~/.docker-cc/claude/ → ~/.docker-cc/cc-home/.claude/"
+  note "原 ~/.docker-cc/claude/ 保留作 backup，可手动 rm -rf 删除"
+fi
+
 ok "创建 $DOCKER_CC_HOME"
 
 # 3. 复制仓库内容到 ~/.docker-cc/repo/（保证 dcc upgrade 时 docker compose build 有完整 context）

@@ -185,14 +185,33 @@ case "${1:-}" in
                     # 覆盖：bin/* / scripts/* / docker-compose.yml / Dockerfile / entrypoint.sh / .env.example
                     cp "$TMP_UPGRADE/bin/"* "$COMPOSE_DIR/bin/" 2>/dev/null || true
                     chmod +x "$COMPOSE_DIR/bin/"* 2>/dev/null || true
-                    for f in docker-compose.yml Dockerfile entrypoint.sh .env.example; do
+                    for f in docker-compose.yml Dockerfile entrypoint.sh .env.example install.sh uninstall.sh; do
                       [ -f "$TMP_UPGRADE/$f" ] && cp "$TMP_UPGRADE/$f" "$COMPOSE_DIR/"
                     done
+                    chmod +x "$COMPOSE_DIR/install.sh" "$COMPOSE_DIR/uninstall.sh" 2>/dev/null || true
                     if [ -d "$TMP_UPGRADE/scripts" ]; then
                       mkdir -p "$COMPOSE_DIR/scripts"
                       cp "$TMP_UPGRADE/scripts/"* "$COMPOSE_DIR/scripts/" 2>/dev/null || true
                     fi
                     echo "  ✓ 宿主 dcc / dcc-use / compose 已同步到 $NEW_VER" >&2
+
+                    # v0.2.10→0.2.11 数据迁移：cc-home 取代 claude（HOME=/data 挂载点）
+                    DCC_PARENT="$(dirname "$COMPOSE_DIR")"
+                    if [ ! -d "$DCC_PARENT/cc-home" ]; then
+                      mkdir -p "$DCC_PARENT/cc-home"
+                      chmod 700 "$DCC_PARENT/cc-home" 2>/dev/null || true
+                      if [ -d "$DCC_PARENT/claude" ] && [ ! -d "$DCC_PARENT/cc-home/.claude" ]; then
+                        mkdir -p "$DCC_PARENT/cc-home/.claude"
+                        # cp -a 失败时仅 warning，不让整个 upgrade abort（image 已升）
+                        if cp -a "$DCC_PARENT/claude/." "$DCC_PARENT/cc-home/.claude/" 2>/dev/null; then
+                          chmod 700 "$DCC_PARENT/cc-home/.claude" 2>/dev/null || true
+                          echo "  ✓ 已迁移 ~/.docker-cc/claude/ → ~/.docker-cc/cc-home/.claude/" >&2
+                          echo "    旧目录保留作 backup（可 rm -rf ~/.docker-cc/claude）" >&2
+                        else
+                          echo "  ⚠ 迁移失败（手动：cp -a ~/.docker-cc/claude/. ~/.docker-cc/cc-home/.claude/）" >&2
+                        fi
+                      fi
+                    fi
                   else
                     echo "  ⚠ 同步 tarball 失败（${TARBALL_URL}）" >&2
                     echo "    镜像已升到 $NEW_VER，但宿主 dcc/dcc-use 未更新" >&2

@@ -152,10 +152,10 @@ HOST（宿主机）
 ├─ dcc, dcc-use                 （PATH 软链）
 │   ├─ dcc up      → docker compose up
 │   ├─ dcc <args>  → docker compose run --rm cc claude <args>
-│   └─ dcc-use     → 改 ~/.docker-cc/claude/settings.json
+│   └─ dcc-use     → 改 ~/.docker-cc/cc-home/.claude/settings.json
 └─ ~/.docker-cc/
     ├─ mihomo/      config.yaml + cache.db
-    ├─ claude/      settings.json + .credentials.json（OAuth 凭据）
+    ├─ cc-home/     容器内 $HOME（.claude.json + .claude/{settings,凭据} + .npmrc + ...）
     └─ providers/   *.json（chmod 600）
                                           │
                                           │ 卷挂载

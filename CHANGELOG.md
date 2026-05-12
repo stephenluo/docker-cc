@@ -2,6 +2,34 @@
 
 ## [Unreleased]
 
+## [0.2.11] - 2026-05-12
+
+### Fixed — 容器内 `.claude.json` 持久化（首次启动 welcome 反复出现的原因）
+
+**问题**：每次跑 `dcc` 都看到：
+```
+Claude configuration file not found at: /root/.claude.json
+A backup file exists at: /root/.claude/backups/.claude.json.backup.xxx
+Welcome to Claude Code v2.x
+Choose the text style ...
+```
+
+**根因**：Claude Code 把用户配置写在 `$HOME/.claude.json`（**文件**，跟 `$HOME/.claude/` **目录**是 sibling）。容器内 `$HOME=/root`，所以文件路径是 `/root/.claude.json`。但 v0.2.0-v0.2.10 的 mount 是 `~/.docker-cc/claude:/root/.claude`（只挂 `.claude/` 目录），`.claude.json` 文件不在挂载点 → 容器 `--rm` 销毁后丢失 → 每次启动都被识别为"首次"。
+
+**修法**：容器内 `$HOME=/data`（docker-compose.yml `environment: HOME=/data`），挂 `~/.docker-cc/cc-home:/data`。这样 `.claude.json` / `.claude/` / `.npmrc` / shell history 等所有 dotfile 都在挂载点。验证：本地 `docker run -e HOME=/data ... claude` 后 `/data/.claude.json` 真出现 ✓
+
+**迁移**（自动）：
+- 老用户 dcc upgrade 升 0.2.11：host sync 后自动 `cp -a ~/.docker-cc/claude/. ~/.docker-cc/cc-home/.claude/`（OAuth 凭据、settings.json、backups 全保留）
+- install.sh 同样逻辑（重装路径也覆盖）
+- 旧 `~/.docker-cc/claude/` **不删**，保留作 backup（用户验证 OK 后可手动 `rm -rf`）
+
+**改动**：
+- `docker-compose.yml` cc service: `HOME=/data` + 挂 `cc-home:/data`（取代 `claude:/root/.claude`）
+- `bin/dcc-use` 容器内分支用 `$HOME` 而非硬编 `/root`
+- `install.sh` 创建 `cc-home/` + 数据迁移
+- `bin/dcc upgrade` host sync 末尾加 inline 数据迁移（让 dcc upgrade 自更新闭环）
+- README × 2 架构图更新
+
 ## [0.2.10] - 2026-05-12
 
 ### Added — dcc-use 版本号 banner

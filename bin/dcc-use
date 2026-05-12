@@ -5,12 +5,13 @@
 set -eo pipefail
 
 # 容器/宿主自动适配路径
+# v0.2.11 起：容器内 $HOME=/data（docker-compose.yml 设置），所有 dotfile 在挂载点
 if [ -f /.dockerenv ]; then
-  PROVIDERS_DIR="${PROVIDERS_DIR:-/root/.cc-providers}"
-  SETTINGS="${CLAUDE_SETTINGS:-/root/.claude/settings.json}"
+  PROVIDERS_DIR="${PROVIDERS_DIR:-$HOME/.cc-providers}"
+  SETTINGS="${CLAUDE_SETTINGS:-$HOME/.claude/settings.json}"
 else
   PROVIDERS_DIR="${PROVIDERS_DIR:-$HOME/.docker-cc/providers}"
-  SETTINGS="${CLAUDE_SETTINGS:-$HOME/.docker-cc/claude/settings.json}"
+  SETTINGS="${CLAUDE_SETTINGS:-$HOME/.docker-cc/cc-home/.claude/settings.json}"
 fi
 mkdir -p "$PROVIDERS_DIR" "$(dirname "$SETTINGS")" 2>/dev/null || true
 [ -f "$SETTINGS" ] || echo '{}' > "$SETTINGS"
