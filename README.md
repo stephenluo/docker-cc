@@ -96,8 +96,10 @@ git clone https://github.com/stephenluo/docker-cc.git docker-cc && cd docker-cc
 | `dcc shell` | Drop into the container (bash) for debugging |
 | `dcc login` / `dcc logout` | Claude account OAuth flow |
 | `dcc refresh` | Re-fetch subscription (URL unchanged) |
-| `dcc upgrade` | Upgrade image (default: `docker compose pull`; configs/credentials kept) |
-| `dcc upgrade --build` | Upgrade by rebuilding locally (Dockerfile patched / registry unreachable) |
+| `dcc upgrade` | Upgrade to latest release (probes `api.github.com`, rewrites VERSION + `.env`, then `docker compose pull`) |
+| `dcc upgrade --keep` | Refresh image layers but keep the currently pinned version |
+| `dcc upgrade --to=<x.y.z>` | Switch to a specific version |
+| `dcc upgrade --build` | Build locally (Dockerfile patched / registry unreachable) |
 | `dcc probe` | Re-probe GH_PROXY mirrors (use when `dcc upgrade --build` fails) |
 | `dcc logs [-f]` | Tail mihomo logs |
 

@@ -96,8 +96,10 @@ git clone https://github.com/stephenluo/docker-cc.git docker-cc && cd docker-cc
 | `dcc shell` | 进容器调试（bash） |
 | `dcc login` / `dcc logout` | Claude 账号 OAuth 流程 |
 | `dcc refresh` | 重拉订阅（不改 URL） |
-| `dcc upgrade` | 升级镜像（默认 `docker compose pull`；配置/凭据不丢） |
-| `dcc upgrade --build` | 升级镜像（本地 rebuild；修了 Dockerfile / registry 拉不动时用） |
+| `dcc upgrade` | 升级到 latest release（探测 `api.github.com`，自动改 VERSION + `.env`，然后 `docker compose pull`） |
+| `dcc upgrade --keep` | 仅刷新镜像 layer，保持当前 pin 版本不变 |
+| `dcc upgrade --to=<x.y.z>` | 切到指定版本 |
+| `dcc upgrade --build` | 本地 rebuild（修了 Dockerfile / registry 拉不动时用） |
 | `dcc probe` | 重新探测 GH_PROXY 备用源（`upgrade --build` 失败时救援） |
 | `dcc logs [-f]` | 看 mihomo 日志 |
 

@@ -1264,7 +1264,7 @@ release 完成后才能跑真正的 `curl | bash`：
 
 本期之外的想法，按优先级：
 
-1. **`dcc upgrade --to <version>` / `dcc-use registry <auto|cn|global>`**：用户安装后想换版本 / registry 不用重跑 install.sh，由 dcc 自身改 `.env` + `docker compose pull`。
+1. ~~**`dcc upgrade --to <version>`**~~ **已在 v0.2.8 实现**（`dcc upgrade` 默认探测 latest / `--to=<v>` 指定 / `--keep` 保持当前 / `--build` 本地构建）。**`dcc-use registry <auto|cn|global>`**：用户安装后想换 registry 不用重跑 install.sh，由 dcc-use 自身改 `.env`。
 2. **weekly auto rebuild**：定时 cron 触发 release.yml，自动跟进 `@anthropic-ai/claude-code` 新版本（不变 docker-cc VERSION，只更新 `:latest`）。
 3. **添加 Docker Hub 作为第三个 registry**：等到 GHCR + 阿里云双源都有用户卡过，再加 Hub 作 mirror。
 4. **release notes 自动生成**：CHANGELOG.md 段落自动同步到 GitHub Release 描述。

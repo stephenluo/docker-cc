@@ -20,10 +20,13 @@ cd "$COMPOSE_DIR"
 if [ -f .env ]; then
   while IFS='=' read -r k v; do
     case "$k" in
-      UI_PORT) v="${v%\"}"; UI_PORT="${v#\"}" ;;
+      UI_PORT)  v="${v%\"}"; UI_PORT="${v#\"}" ;;
+      DCC_REPO) v="${v%\"}"; DCC_REPO="${v#\"}" ;;
     esac
   done < .env
 fi
+# dcc upgrade 探测 latest 版本时使用；fork 用户可在 .env 里加 DCC_REPO=myfork/docker-cc 覆盖
+DCC_REPO="${DCC_REPO:-stephenluo/docker-cc}"
 
 # 读版本号（VERSION 文件由 install.sh 复制到 COMPOSE_DIR）
 DCC_VERSION="$(cat VERSION 2>/dev/null || echo dev)"
@@ -81,13 +84,27 @@ case "${1:-}" in
           # 共享脚本（与 install.sh 同源）维护探测逻辑 + 镜像源列表
           exec "$COMPOSE_DIR/bin/_dcc-probe-ghproxy" "$COMPOSE_DIR/.env" ;;
   upgrade)
-          # 升级：默认从 registry pull 新版镜像并重建容器（快、不依赖国内构建链）。
+          # 升级：默认探测 GitHub Release latest 自动切到新版，--to=<v> 显式指定，
+          # --keep 保持当前 pin（仅刷新镜像 layer），--build 本地构建。
           # ⚠ 不要用 dcc update —— claude code 装在镜像层，--rm 容器内 npm 更新会被丢弃。
           shift
           FORCE_BUILD=0
-          case "${1:-}" in
-            --build) FORCE_BUILD=1; shift ;;
-          esac
+          TARGET_VER=""    # 空 = 探测 latest；keep = 保持当前；<x.y.z> = 指定版本
+          while [ $# -gt 0 ]; do
+            case "$1" in
+              --build)  FORCE_BUILD=1; shift ;;
+              --keep)   TARGET_VER="keep"; shift ;;
+              --to=*)   TARGET_VER="${1#--to=}"; shift
+                        [ -n "$TARGET_VER" ] || { echo "--to= 后需要版本号"; exit 1; } ;;
+              --to)     shift
+                        [ -n "${1:-}" ] || { echo "--to 后需要版本号"; exit 1; }
+                        TARGET_VER="$1"; shift ;;
+              claude|all|mihomo) break ;;
+              *) echo "未知参数: $1"
+                 echo "用法: dcc upgrade [--build|--keep|--to=<version>] [claude|mihomo|all]"
+                 exit 1 ;;
+            esac
+          done
           case "${1:-claude}" in
             claude|all)
               if [ "$FORCE_BUILD" = "1" ]; then
@@ -98,10 +115,57 @@ case "${1:-}" in
                   exit 1
                 fi
               else
+                # —— 决定目标版本 ——
+                CUR_VER="$(cat VERSION 2>/dev/null || echo "")"
+                if [ "$TARGET_VER" = "keep" ]; then
+                  NEW_VER="$CUR_VER"
+                  echo "  --keep: 保持当前版本 ${CUR_VER:-（无 VERSION 文件）}（仅刷新镜像 layer）" >&2
+                elif [ -n "$TARGET_VER" ]; then
+                  NEW_VER="$TARGET_VER"
+                  echo "  --to=$NEW_VER: 切到指定版本" >&2
+                else
+                  echo "  探测 latest 版本..." >&2
+                  # api.github.com 走直链（ghfast 多数不代理 API）；DCC_API_BASE 允许 bats
+                  # 注入 mock / GHE 用户改 API 基址。管道末尾 || true 兜底 set -e + pipefail，
+                  # 否则 curl 失败会跳过下方 NEW_VER 检查
+                  NEW_VER=$(curl -fsSL --max-time 10 \
+                              "${DCC_API_BASE:-https://api.github.com}/repos/${DCC_REPO}/releases/latest" 2>/dev/null \
+                              | grep -E '"tag_name"[[:space:]]*:' | head -1 \
+                              | sed -E 's/.*"tag_name"[[:space:]]*:[[:space:]]*"v?([^"]+)".*/\1/' \
+                              || true)
+                  if [ -z "$NEW_VER" ]; then
+                    echo "  ✗ 无法探测 latest 版本（api.github.com 不可达或 release 不存在）" >&2
+                    echo "    用 dcc upgrade --to=<x.y.z> 指定版本，或 dcc upgrade --keep 保持当前" >&2
+                    exit 1
+                  fi
+                fi
+
+                # —— 更新 VERSION + .env DCC_IMAGE tag（如果版本变化）——
+                if [ "$NEW_VER" != "$CUR_VER" ] && [ "$TARGET_VER" != "keep" ]; then
+                  echo "  升级 ${CUR_VER:-（无 VERSION 文件）} → $NEW_VER"
+                  echo "$NEW_VER" > VERSION
+                  if [ -f .env ]; then
+                    sed -i.bak -E "s|(/docker-cc:)[^\"[:space:]]+|\\1${NEW_VER}|" .env
+                    rm -f .env.bak
+                  fi
+                elif [ "$NEW_VER" = "$CUR_VER" ] && [ "$TARGET_VER" != "keep" ]; then
+                  echo "  当前已是 $NEW_VER，跳过版本切换"
+                fi
+
+                # —— pull 镜像（失败回退 VERSION + .env）——
                 if ! docker compose pull; then
+                  if [ "$NEW_VER" != "$CUR_VER" ] && [ "$TARGET_VER" != "keep" ]; then
+                    echo "  pull 失败，回退版本到 ${CUR_VER:-（无）}" >&2
+                    echo "$CUR_VER" > VERSION
+                    if [ -f .env ]; then
+                      sed -i.bak -E "s|(/docker-cc:)[^\"[:space:]]+|\\1${CUR_VER}|" .env
+                      rm -f .env.bak
+                    fi
+                  fi
                   echo ""
                   echo "pull 失败。常见原因："
                   echo "  - registry 不可达（试 dcc upgrade --build 走本地构建）"
+                  echo "  - 版本 $NEW_VER 不存在（用 dcc upgrade --to=<可用版本>）"
                   echo "  - DCC_IMAGE 配置错（检查 ~/.docker-cc/repo/.env）"
                   exit 1
                 fi
@@ -112,7 +176,7 @@ case "${1:-}" in
             mihomo)
               echo "升级 mihomo 内核：修改 Dockerfile 的 ARG MIHOMO_VERSION，然后 dcc upgrade claude --build" ;;
             *)
-              echo "用法: dcc upgrade [--build] [claude|mihomo|all]"; exit 1 ;;
+              echo "用法: dcc upgrade [--build|--keep|--to=<version>] [claude|mihomo|all]"; exit 1 ;;
           esac ;;
   update)
           echo "提示：dcc update 不会持久化（容器层 npm 更新会被丢弃）。"
